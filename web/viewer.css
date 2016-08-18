@@ -30,8 +30,7 @@ html {
 body {
   height: 100%;
   width: 100%;
-  background-color: #404040;
-  background-image: url(images/texture.png);
+  background: #ddd;
 }
 
 body,
@@ -49,53 +48,39 @@ select {
   display: none !important;
 }
 
-#viewerContainer.pdfPresentationMode:-webkit-full-screen {
-  top: 0px;
-  border-top: 2px solid transparent;
-  background-color: #000;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  cursor: none;
-  -webkit-user-select: none;
+.transparent {
+  opacity: 0 !important;
+}
+[transparent] {
+  opacity: 0 !important;
 }
 
-#viewerContainer.pdfPresentationMode:-moz-full-screen {
-  top: 0px;
-  border-top: 2px solid transparent;
-  background-color: #000;
+#viewerContainer #loadingIconOverlay {
+  opacity: 0;
+  position: fixed;
+  left: 0;
+  top: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  cursor: none;
-  -moz-user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
 
-#viewerContainer.pdfPresentationMode:-ms-fullscreen {
-  top: 0px !important;
-  border-top: 2px solid transparent;
-  width: 100%;
-  height: 100%;
-  overflow: hidden !important;
-  cursor: none;
-  -ms-user-select: none;
+#viewerContainer.scaleBiggerThanPageFit.rendering #loadingIconOverlay {
+  opacity: 1;
 }
 
-#viewerContainer.pdfPresentationMode:-ms-fullscreen::-ms-backdrop {
-  background-color: #000;
+#viewer {
+  display: flex;
+  flex-direction: column;
 }
 
-#viewerContainer.pdfPresentationMode:fullscreen {
-  top: 0px;
-  border-top: 2px solid transparent;
-  background-color: #000;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  cursor: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
+#viewerContainer.pdfPresentationMode #viewer {
+  /* For vertically centering the first and the last page */
+  padding-top: 3000px;
+  padding-bottom: 3000px;
 }
 
 .pdfPresentationMode:-webkit-full-screen a:not(.internalLink) {
@@ -112,27 +97,6 @@ select {
 
 .pdfPresentationMode:fullscreen a:not(.internalLink) {
   display: none;
-}
-
-.pdfPresentationMode:-webkit-full-screen .textLayer > div {
-  cursor: none;
-}
-
-.pdfPresentationMode:-moz-full-screen .textLayer > div {
-  cursor: none;
-}
-
-.pdfPresentationMode:-ms-fullscreen .textLayer > div {
-  cursor: none;
-}
-
-.pdfPresentationMode:fullscreen .textLayer > div {
-  cursor: none;
-}
-
-.pdfPresentationMode.pdfPresentationModeControls > *,
-.pdfPresentationMode.pdfPresentationModeControls .textLayer > div {
-  cursor: default;
 }
 
 /* outer/inner center provides horizontal center */
@@ -168,6 +132,7 @@ html[dir='rtl'] .innerCenter {
 }
 
 #sidebarContainer {
+  display: none !important;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -177,7 +142,6 @@ html[dir='rtl'] .innerCenter {
   -webkit-transition-timing-function: ease;
   transition-duration: 200ms;
   transition-timing-function: ease;
-
 }
 html[dir='ltr'] #sidebarContainer {
   -webkit-transition-property: left;
@@ -231,7 +195,6 @@ html[dir='rtl'] #outerContainer.sidebarOpen > #mainContainer {
   -webkit-overflow-scrolling: touch;
   position: absolute;
   width: 200px;
-  background-color: hsla(0,0%,0%,.1);
 }
 html[dir='ltr'] #sidebarContent {
   left: 0;
@@ -243,14 +206,17 @@ html[dir='rtl'] #sidebarContent {
 }
 
 #viewerContainer {
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   position: absolute;
-  top: 32px;
+  top: 0;
   right: 0;
   bottom: 0;
   left: 0;
   outline: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 html[dir='ltr'] #viewerContainer {
   box-shadow: inset 1px 0 0 hsla(0,0%,100%,.05);
@@ -268,15 +234,14 @@ html[dir='rtl'] #viewerContainer {
 }
 
 #toolbarContainer {
+  display: none !important;
   width: 100%;
 }
 
 #toolbarSidebar {
+  display: none !important;
   width: 200px;
   height: 32px;
-  background-color: #424242; /* fallback */
-  background-image: url(images/texture.png),
-                    linear-gradient(hsla(0,0%,30%,.99), hsla(0,0%,25%,.95));
 }
 html[dir='ltr'] #toolbarSidebar {
   box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.25),
@@ -292,11 +257,10 @@ html[dir='rtl'] #toolbarSidebar {
 }
 
 #toolbarContainer, .findbar, .secondaryToolbar {
+  display: none !important;
   position: relative;
   height: 32px;
-  background-color: #474747; /* fallback */
-  background-image: url(images/texture.png),
-                    linear-gradient(hsla(0,0%,32%,.99), hsla(0,0%,27%,.95));
+  background-color: #ddd;
 }
 html[dir='ltr'] #toolbarContainer, .findbar, .secondaryToolbar {
   box-shadow: inset 1px 0 0 hsla(0,0%,100%,.08),
@@ -318,11 +282,10 @@ html[dir='rtl'] #toolbarContainer, .findbar, .secondaryToolbar {
 }
 
 #loadingBar {
+  display: none !important;
   position: relative;
   width: 100%;
-  height: 4px;
-  background-color: #333;
-  border-bottom: 1px solid #333;
+  height: 0px;
 }
 
 #loadingBar .progress {
@@ -370,6 +333,7 @@ html[dir='rtl'] #toolbarContainer, .findbar, .secondaryToolbar {
 }
 
 .findbar, .secondaryToolbar {
+  display: none !important;
   top: 32px;
   position: absolute;
   z-index: 10000;
@@ -408,6 +372,7 @@ html[dir='rtl'] #findInput[data-status="pending"] {
 }
 
 .secondaryToolbar {
+  display: none !important;
   padding: 6px;
   height: auto;
   z-index: 30000;
@@ -1379,12 +1344,10 @@ html[dir='rtl'] .outlineItemToggler::before {
   display: inline-block;
   padding: 15px;
   border-spacing: 4px;
-  color: hsl(0,0%,85%);
+  color: #000;
   font-size: 12px;
   line-height: 14px;
-  background-color: #474747; /* fallback */
-  background-image: url(images/texture.png),
-                    linear-gradient(hsla(0,0%,32%,.99), hsla(0,0%,27%,.95));
+  background-color: #ddd;
   box-shadow: inset 1px 0 0 hsla(0,0%,100%,.08),
               inset 0 1px 1px hsla(0,0%,0%,.15),
               inset 0 -1px 0 hsla(0,0%,100%,.05),
@@ -1580,7 +1543,7 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
 }
 
 #printContainer {
-  display: none;
+  display: none !important;
 }
 
 @media screen and (min-resolution: 2dppx) {
@@ -1761,6 +1724,7 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
 @media print {
   /* General rules for printing. */
   body {
+    display: none !important;
     background: transparent none;
   }
 

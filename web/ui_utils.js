@@ -26,7 +26,7 @@
 }(this, function (exports, pdfjsLib) {
 
 var CSS_UNITS = 96.0 / 72.0;
-var DEFAULT_SCALE_VALUE = 'auto';
+var DEFAULT_SCALE_VALUE = 'page-fit';
 var DEFAULT_SCALE = 1.0;
 var UNKNOWN_SCALE = 0;
 var MAX_AUTO_SCALE = 1.25;
@@ -287,7 +287,12 @@ function roundToDivide(x, div) {
 /**
  * Generic helper to find out what elements are visible within a scroll pane.
  */
-function getVisibleElements(scrollEl, views, sortByVisibility) {
+function getVisibleElements(scrollEl, views, sortByVisibility,
+    leftTolerance, topTolerance, rightTolerance, bottomTolerance) {
+  leftTolerance = leftTolerance || 0;
+  topTolerance = topTolerance || 0;
+  rightTolerance = rightTolerance || 0;
+  bottomTolerance = bottomTolerance || 0;
   var top = scrollEl.scrollTop, bottom = top + scrollEl.clientHeight;
   var left = scrollEl.scrollLeft, right = left + scrollEl.clientWidth;
 
@@ -295,7 +300,7 @@ function getVisibleElements(scrollEl, views, sortByVisibility) {
     var element = view.div;
     var elementBottom =
       element.offsetTop + element.clientTop + element.clientHeight;
-    return elementBottom > top;
+    return elementBottom > top - topTolerance;
   }
 
   var visible = [], view, element;
@@ -310,15 +315,17 @@ function getVisibleElements(scrollEl, views, sortByVisibility) {
     currentHeight = element.offsetTop + element.clientTop;
     viewHeight = element.clientHeight;
 
-    if (currentHeight > bottom) {
+    if (currentHeight > bottom + bottomTolerance) {
       break;
     }
 
     currentWidth = element.offsetLeft + element.clientLeft;
     viewWidth = element.clientWidth;
-    if (currentWidth + viewWidth < left || currentWidth > right) {
+
+    if (currentWidth + viewWidth < left - leftTolerance || currentWidth > right + rightTolerance) {
       continue;
     }
+
     hiddenHeight = Math.max(0, top - currentHeight) +
       Math.max(0, currentHeight + viewHeight - bottom);
     percentHeight = ((viewHeight - hiddenHeight) * 100 / viewHeight) | 0;
@@ -341,6 +348,7 @@ function getVisibleElements(scrollEl, views, sortByVisibility) {
       if (Math.abs(pc) > 0.001) {
         return -pc;
       }
+
       return a.id - b.id; // ensure stability
     });
   }

@@ -45,6 +45,8 @@ var TEXT_LAYER_RENDER_DELAY = 200; // ms
  * @property {HTMLDivElement} container - The viewer element.
  * @property {EventBus} eventBus - The application event bus.
  * @property {number} id - The page unique ID (normally its number).
+ * @property {boolean} twoPageMode
+ * @property {boolean} containerHasAnEmptyPageAfterCover
  * @property {number} scale - The page scale display.
  * @property {PageViewport} defaultViewport - The page viewport.
  * @property {PDFRenderingQueue} renderingQueue - The rendering queue object.
@@ -64,12 +66,15 @@ var PDFPageView = (function PDFPageViewClosure() {
   function PDFPageView(options) {
     var container = options.container;
     var id = options.id;
+    var twoPageMode = options.twoPageMode || false;
+    var containerHasAnEmptyPageAfterCover = options.containerHasAnEmptyPageAfterCover || false;
     var scale = options.scale;
     var defaultViewport = options.defaultViewport;
     var renderingQueue = options.renderingQueue;
     var textLayerFactory = options.textLayerFactory;
     var annotationLayerFactory = options.annotationLayerFactory;
 
+    this.container = container;
     this.id = id;
     this.renderingId = 'page' + id;
 
@@ -104,10 +109,64 @@ var PDFPageView = (function PDFPageViewClosure() {
     div.setAttribute('data-page-number', this.id);
     this.div = div;
 
-    container.appendChild(div);
+    this._containerHasAnEmptyPageAfterCover = containerHasAnEmptyPageAfterCover;
+    this.twoPageMode = twoPageMode;
   }
 
   PDFPageView.prototype = {
+    get twoPageMode() {
+      return this._twoPageMode || false; 
+    },
+
+    set twoPageMode(val) {
+      /**
+       * *(A, B) : page A, B is in the same twoPageContainer.
+       * when containerHasAnEmptyPageAfterCover is true -> 1, (2, 3), (4, 5), (6, 7) ...
+       * otherwise -> (1, 2), (3, 4), (5, 6) ...
+       */
+      var twoPageId = 'twoPageContainer' +
+        parseInt((this.id + (this.containerHasAnEmptyPageAfterCover ? 0 : 1)) / 2, 10);
+      var twoPageContainer = this.twoPageContainer || document.getElementById(twoPageId);
+
+      if (val) {
+        if (!twoPageContainer) {
+          twoPageContainer = document.createElement('div');
+          twoPageContainer.id = twoPageId;
+          twoPageContainer.classList.add('twoPageContainer');
+
+          this.twoPageContainer = twoPageContainer;
+          this.container.appendChild(twoPageContainer);
+        }
+        twoPageContainer.appendChild(this.div);
+      } else {
+        this.container.appendChild(this.div);
+        
+        if (twoPageContainer) {
+          if (twoPageContainer.children.length === 0) {
+            this.container.removeChild(twoPageContainer);
+          }
+          
+          this.twoPageContainer = null;
+        }
+      }
+
+      this._twoPageMode = val;
+      this.reset();
+    },
+    
+    get containerHasAnEmptyPageAfterCover() {
+      return this._containerHasAnEmptyPageAfterCover;
+    },
+
+    set containerHasAnEmptyPageAfterCover(val) {
+      /**
+       * If this property changes,
+       * this page view might be moved to another container.
+       */
+      this.twoPageContainer = null;
+      this._containerHasAnEmptyPageAfterCover = val;
+    },
+
     setPdfPage: function PDFPageView_setPdfPage(pdfPage) {
       this.pdfPage = pdfPage;
       this.pdfPageRotate = pdfPage.rotate;
@@ -168,7 +227,15 @@ var PDFPageView = (function PDFPageViewClosure() {
 
       this.loadingIconDiv = document.createElement('div');
       this.loadingIconDiv.className = 'loadingIcon';
+      var loadingIconImage = document.createElement('img');
+      loadingIconImage.className = 'loadingIconImage';
+      loadingIconImage.setAttribute('src', 'images/loading-icon.gif');
+      this.loadingIconDiv.appendChild(loadingIconImage);
       div.appendChild(this.loadingIconDiv);
+      this.eventBus.dispatch('loadingIconVisibilityChanged', {
+        pageNumber: this.id,
+        visible: true,
+      });
     },
 
     update: function PDFPageView_update(scale, rotation) {
@@ -433,6 +500,10 @@ var PDFPageView = (function PDFPageViewClosure() {
         if (self.loadingIconDiv) {
           div.removeChild(self.loadingIconDiv);
           delete self.loadingIconDiv;
+          self.eventBus.dispatch('loadingIconVisibilityChanged', {
+            pageNumber: self.id,
+            visible: false,
+          });
         }
 
         if (self.zoomLayer) {

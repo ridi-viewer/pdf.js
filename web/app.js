@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals DEFAULT_URL, PDFBug, Stats */
+/* globals PDFBug, Stats, RidiPdfViewer */
 
 'use strict';
 
@@ -94,9 +94,9 @@ var PDFFindController = pdfFindControllerLib.PDFFindController;
 var PDFFindBar = pdfFindBarLib.PDFFindBar;
 var getGlobalEventBus = domEventsLib.getGlobalEventBus;
 
-var DEFAULT_SCALE_DELTA = 1.1;
+var DEFAULT_SCALE_DELTA = 1.014;
 var MIN_SCALE = 0.25;
-var MAX_SCALE = 10.0;
+var MAX_SCALE = 8.0;
 var SCALE_SELECT_CONTAINER_PADDING = 8;
 var SCALE_SELECT_PADDING = 22;
 var PAGE_NUMBER_LOADING_INDICATOR = 'visiblePageIsLoading';
@@ -209,7 +209,8 @@ var PDFViewerApplication = {
       eventBus: eventBus,
       renderingQueue: pdfRenderingQueue,
       linkService: pdfLinkService,
-      downloadManager: downloadManager
+      downloadManager: downloadManager,
+      removePageBorders: true
     });
     pdfRenderingQueue.setViewer(this.pdfViewer);
     pdfLinkService.setViewer(this.pdfViewer);
@@ -270,15 +271,13 @@ var PDFViewerApplication = {
     this.secondaryToolbar =
       new SecondaryToolbar(appConfig.secondaryToolbar, eventBus);
 
-    if (this.supportsFullscreen) {
-      this.pdfPresentationMode = new PDFPresentationMode({
-        container: container,
-        viewer: viewer,
-        pdfViewer: this.pdfViewer,
-        eventBus: this.eventBus,
-        contextMenuItems: appConfig.fullscreen
-      });
-    }
+    this.pdfPresentationMode = new PDFPresentationMode({
+      container: container,
+      viewer: viewer,
+      pdfViewer: this.pdfViewer,
+      eventBus: this.eventBus,
+      contextMenuItems: appConfig.fullscreen
+    });
 
     this.passwordPrompt = new PasswordPrompt(appConfig.passwordOverlay);
 
@@ -375,24 +374,52 @@ var PDFViewerApplication = {
     this.initialize(config).then(webViewerInitialized);
   },
 
+  // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY (12 ticks)
   zoomIn: function pdfViewZoomIn(ticks) {
+    // Note : this may collide with page-fit scale approximation if you set 0.995 more closer to 1
+    var shouldApproximateToOriginalScale = this.pdfViewer.currentScale < 0.995;
+    if (ticks === undefined) {
+      ticks = 12;
+    }
+
     var newScale = this.pdfViewer.currentScale;
     do {
-      newScale = (newScale * DEFAULT_SCALE_DELTA).toFixed(2);
-      newScale = Math.ceil(newScale * 10) / 10;
+      newScale = (newScale * DEFAULT_SCALE_DELTA);
       newScale = Math.min(MAX_SCALE, newScale);
     } while (--ticks > 0 && newScale < MAX_SCALE);
+    
+    if (shouldApproximateToOriginalScale && newScale > 1.005) {
+      newScale = 1;
+    }
+
     this.pdfViewer.currentScaleValue = newScale;
   },
 
   zoomOut: function pdfViewZoomOut(ticks) {
+    var shouldApproximateToOriginalScale = this.pdfViewer.currentScale > 1.005;
+    if (ticks === undefined) {
+      ticks = 12;
+    }
+
     var newScale = this.pdfViewer.currentScale;
     do {
-      newScale = (newScale / DEFAULT_SCALE_DELTA).toFixed(2);
-      newScale = Math.floor(newScale * 10) / 10;
+      newScale = (newScale / DEFAULT_SCALE_DELTA);
       newScale = Math.max(MIN_SCALE, newScale);
     } while (--ticks > 0 && newScale > MIN_SCALE);
+    
+    if (shouldApproximateToOriginalScale && newScale < 0.995) {
+      newScale = 1;
+    }
+
     this.pdfViewer.currentScaleValue = newScale;
+  },
+  
+  set currentScaleValue(val) {
+    this.pdfViewer.currentScaleValue = val;
+  },
+
+  get currentScaleValue() {
+    return this.pdfViewer.currentScaleValue;
   },
 
   get pagesCount() {
@@ -408,33 +435,7 @@ var PDFViewerApplication = {
   },
 
   get supportsPrinting() {
-    var canvas = document.createElement('canvas');
-    var value = 'mozPrintCallback' in canvas;
-
-    return pdfjsLib.shadow(this, 'supportsPrinting', value);
-  },
-
-  get supportsFullscreen() {
-//#if MOZCENTRAL
-//  var support = document.fullscreenEnabled === true ||
-//                document.mozFullScreenEnabled === true;
-//#else
-    var doc = document.documentElement;
-    var support = !!(doc.requestFullscreen || doc.mozRequestFullScreen ||
-                     doc.webkitRequestFullScreen || doc.msRequestFullscreen);
-
-    if (document.fullscreenEnabled === false ||
-        document.mozFullScreenEnabled === false ||
-        document.webkitFullscreenEnabled === false ||
-        document.msFullscreenEnabled === false) {
-      support = false;
-    }
-//#endif
-    if (support && pdfjsLib.PDFJS.disableFullscreen === true) {
-      support = false;
-    }
-
-    return pdfjsLib.shadow(this, 'supportsFullscreen', support);
+    return pdfjsLib.shadow(this, 'supportsPrinting', false);
   },
 
   get supportsIntegratedFind() {
@@ -562,12 +563,25 @@ var PDFViewerApplication = {
    *                      is opened.
    */
   open: function pdfViewOpen(file, args) {
-//#if GENERIC
+    var scale = 0;
     if (arguments.length > 2 || typeof args === 'number') {
-      return Promise.reject(
-        new Error('Call of open() with obsolete signature.'));
+      console.warn('Call of open() with obsolete signature.');
+      if (typeof args === 'number') {
+        scale = args; // scale argument was found
+      }
+      args = arguments[4] || null;
+      if (arguments[3] && typeof arguments[3] === 'object') {
+        // The pdfDataRangeTransport argument is present.
+        args = Object.create(args);
+        args.range = arguments[3];
+      }
+      if (typeof arguments[2] === 'string') {
+        // The password argument is present.
+        args = Object.create(args);
+        args.password = arguments[2];
+      }
     }
-//#endif
+
     if (this.pdfLoadingTask) {
       // We need to destroy already opened document.
       return this.close().then(function () {
@@ -578,7 +592,7 @@ var PDFViewerApplication = {
       }.bind(this));
     }
 
-    var parameters = Object.create(null), scale;
+    var parameters = Object.create(null);
     if (typeof file === 'string') { // URL
       this.setTitleUsingUrl(file);
       parameters.url = file;
@@ -742,38 +756,7 @@ var PDFViewerApplication = {
     }
 
 //#if !(FIREFOX || MOZCENTRAL)
-    var errorWrapperConfig = this.appConfig.errorWrapper;
-    var errorWrapper = errorWrapperConfig.container;
-    errorWrapper.removeAttribute('hidden');
-
-    var errorMessage = errorWrapperConfig.errorMessage;
-    errorMessage.textContent = message;
-
-    var closeButton = errorWrapperConfig.closeButton;
-    closeButton.onclick = function() {
-      errorWrapper.setAttribute('hidden', 'true');
-    };
-
-    var errorMoreInfo = errorWrapperConfig.errorMoreInfo;
-    var moreInfoButton = errorWrapperConfig.moreInfoButton;
-    var lessInfoButton = errorWrapperConfig.lessInfoButton;
-    moreInfoButton.onclick = function() {
-      errorMoreInfo.removeAttribute('hidden');
-      moreInfoButton.setAttribute('hidden', 'true');
-      lessInfoButton.removeAttribute('hidden');
-      errorMoreInfo.style.height = errorMoreInfo.scrollHeight + 'px';
-    };
-    lessInfoButton.onclick = function() {
-      errorMoreInfo.setAttribute('hidden', 'true');
-      moreInfoButton.removeAttribute('hidden');
-      lessInfoButton.setAttribute('hidden', 'true');
-    };
-    moreInfoButton.oncontextmenu = noContextMenuHandler;
-    lessInfoButton.oncontextmenu = noContextMenuHandler;
-    closeButton.oncontextmenu = noContextMenuHandler;
-    moreInfoButton.removeAttribute('hidden');
-    lessInfoButton.setAttribute('hidden', 'true');
-    errorMoreInfo.value = moreInfoText;
+    RidiPdfViewer.onError(message + ' ' + moreInfoText);
 //#else
 //  console.error(message + '\n' + moreInfoText);
 //  this.fallback();
@@ -906,11 +889,24 @@ var PDFViewerApplication = {
         if (!self.isViewerEmbedded) {
           self.pdfViewer.focus();
         }
+        
+        RidiPdfViewer.nativeViewer.log('A PDF document is loaded!');
+        // PDF files are not separate by spine or picture, so book dataIndex is fixed to 0.
+        RidiPdfViewer.nativeViewer.jsBookDataLoaded(0);
+        RidiPdfViewer.nativeViewer.jsBookDataPagesCountCalculated(0, self.pagesCount);
       }, function rejected(reason) {
         console.error(reason);
         self.setInitialView(null, { scale: scale });
       });
+      
+      // For documents with different page sizes,
+      // some pages get bigger or smaller after being rendered... so adjust position & scale again.
+      pagesPromise.then(function resolved() {
+        self.currentScaleValue = self.currentScaleValue; 
+        adjustPositionInsidePage(self.page);
+      });
 
+      // FIXME : the code below is not used (but seems useful though..)
       // For documents with different page sizes,
       // ensure that the correct location becomes visible on load.
       pagesPromise.then(function resolved() {
@@ -929,33 +925,12 @@ var PDFViewerApplication = {
       });
     });
 
-    pagesPromise.then(function() {
-      if (self.supportsPrinting) {
-        pdfDocument.getJavaScript().then(function(javaScript) {
-          if (javaScript.length) {
-            console.warn('Warning: JavaScript is not supported');
-            self.fallback(pdfjsLib.UNSUPPORTED_FEATURES.javaScript);
-          }
-          // Hack to support auto printing.
-          var regex = /\bprint\s*\(/;
-          for (var i = 0, ii = javaScript.length; i < ii; i++) {
-            var js = javaScript[i];
-            if (js && regex.test(js)) {
-              setTimeout(function() {
-                window.print();
-              });
-              return;
-            }
-          }
-        });
-      }
-    });
-
     Promise.all([onePageRendered, this.animationStartedPromise]).then(
         function() {
       pdfDocument.getOutline().then(function(outline) {
+        RidiPdfViewer.setTocFromPdfOutline(outline);
         self.pdfOutlineViewer.render({ outline: outline });
-      });
+      }, RidiPdfViewer.onError);
       pdfDocument.getAttachments().then(function(attachments) {
         self.pdfAttachmentViewer.render({ attachments: attachments });
       });
@@ -1190,11 +1165,11 @@ var PDFViewerApplication = {
     this.pdfViewer.scrollPageIntoView(pageNumber);
   },
 
-  requestPresentationMode: function pdfViewRequestPresentationMode() {
+  togglePresentationMode: function pdfViewTogglePresentationMode(activate) {
     if (!this.pdfPresentationMode) {
       return;
     }
-    this.pdfPresentationMode.request();
+    this.pdfPresentationMode.toggle(activate);
   },
 
   /**
@@ -1267,6 +1242,13 @@ var PDFViewerApplication = {
 
     selectScaleOption(scaleValue, scale);
   },
+ 
+  toggleHandTool: function pdfViewToggleHandTool(activate) {
+    if (!this.handTool) {
+      return;
+    }
+    this.handTool.toggle(activate);
+  },
 
   bindEvents: function pdfViewBindEvents() {
     var eventBus = this.eventBus;
@@ -1280,6 +1262,7 @@ var PDFViewerApplication = {
     eventBus.on('textlayerrendered', webViewerTextLayerRendered);
     eventBus.on('updateviewarea', webViewerUpdateViewarea);
     eventBus.on('pagechanging', webViewerPageChanging);
+    eventBus.on('pagechange', webViewerPageChanged);
     eventBus.on('scalechanging', webViewerScaleChanging);
     eventBus.on('sidebarviewchanged', webViewerSidebarViewChanged);
     eventBus.on('pagemode', webViewerPageMode);
@@ -1299,6 +1282,7 @@ var PDFViewerApplication = {
 //#if GENERIC
     eventBus.on('fileinputchange', webViewerFileInputChange);
 //#endif
+    eventBus.on('handtoolchanged', webViewerHandToolChanged);
   }
 };
 
@@ -1477,11 +1461,6 @@ function webViewerInitialized() {
     appConfig.secondaryToolbar.printButton.classList.add('hidden');
   }
 
-  if (!PDFViewerApplication.supportsFullscreen) {
-    appConfig.toolbar.presentationModeButton.classList.add('hidden');
-    appConfig.secondaryToolbar.presentationModeButton.classList.add('hidden');
-  }
-
   if (PDFViewerApplication.supportsIntegratedFind) {
     appConfig.toolbar.viewFind.classList.add('hidden');
   }
@@ -1647,6 +1626,8 @@ function webViewerPageRendered(e) {
     });
   });
 //#endif
+
+  RidiPdfViewer.nativeViewer.jsPageRendered(e.pageNumber);
 }
 
 function webViewerTextLayerRendered(e) {
@@ -1724,6 +1705,9 @@ function webViewerPresentationModeChanged(e) {
   PDFViewerApplication.pdfViewer.presentationModeState =
     switchInProgress ? PresentationModeState.CHANGING :
     active ? PresentationModeState.FULLSCREEN : PresentationModeState.NORMAL;
+  
+  activateHandToolIfRequired();
+  RidiPdfViewer.nativeViewer.jsPresentationModeChanged(e.active, e.switchInProgress);
 }
 
 function webViewerSidebarViewChanged(e) {
@@ -1772,10 +1756,8 @@ function webViewerUpdateViewarea(e) {
 
   // Show/hide the loading indicator in the page number input element.
   var pageNumberInput = PDFViewerApplication.appConfig.toolbar.pageNumber;
-  var currentPage =
-    PDFViewerApplication.pdfViewer.getPageView(PDFViewerApplication.page - 1);
 
-  if (currentPage.renderingState === RenderingStates.FINISHED) {
+  if (PDFViewerApplication.pdfViewer.currentPageView.renderingState === RenderingStates.FINISHED) {
     pageNumberInput.classList.remove(PAGE_NUMBER_LOADING_INDICATOR);
   } else {
     pageNumberInput.classList.add(PAGE_NUMBER_LOADING_INDICATOR);
@@ -1789,9 +1771,9 @@ window.addEventListener('resize', function webViewerResize(evt) {
 function webViewerResize() {
   if (PDFViewerApplication.initialized) {
     var currentScaleValue = PDFViewerApplication.pdfViewer.currentScaleValue;
-    if (currentScaleValue === 'auto' ||
-        currentScaleValue === 'page-fit' ||
-        currentScaleValue === 'page-width') {
+    if (currentScaleValue === 'page-fit') {
+      PDFViewerApplication.currentScaleValue = PDFViewerApplication.pdfViewer.currentPageFitScale;
+    } else if (currentScaleValue === 'auto' || currentScaleValue === 'page-width') {
       // Note: the scale is constant for 'page-actual'.
       PDFViewerApplication.pdfViewer.currentScaleValue = currentScaleValue;
     } else if (!currentScaleValue) {
@@ -1800,6 +1782,12 @@ function webViewerResize() {
       // (E.g. the document being rendered with the wrong scale on load.)
       PDFViewerApplication.pdfViewer.currentScaleValue = DEFAULT_SCALE_VALUE;
     }
+
+    if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
+      adjustPositionInsidePage(PDFViewerApplication.page);
+    }
+    activateHandToolIfRequired();
+
     PDFViewerApplication.pdfViewer.update();
   }
 
@@ -1896,12 +1884,12 @@ function webViewerLocalized() {
   });
 }
 
-function webViewerPresentationMode() {
-  PDFViewerApplication.requestPresentationMode();
-}
 function webViewerOpenFile() {
   var openFileInputName = PDFViewerApplication.appConfig.openFileInputName;
   document.getElementById(openFileInputName).click();
+}
+function webViewerPresentationMode() {
+  PDFViewerApplication.togglePresentationMode();
 }
 function webViewerPrint() {
   window.print();
@@ -1949,6 +1937,70 @@ function webViewerFindFromUrlHash(e) {
   });
 }
 
+function webViewerHandToolChanged(e) {
+  RidiPdfViewer.nativeViewer.jsHandToolChanged(e.isActive);
+}
+
+function adjustPositionInsidePage(pageNumber, requestedDeltaX, requestedDeltaY) {
+  if (pageNumber !== PDFViewerApplication.page) {
+    PDFViewerApplication.page = pageNumber;
+  }
+
+  var pdfViewer = PDFViewerApplication.pdfViewer;
+  var pageView = pdfViewer.currentLargerHeightPageView;
+  if (!pageView) {
+    return;
+  }
+
+  var pageViewRect = pageView.div.getBoundingClientRect();
+  var container = pdfViewer.container;
+  var containerRect = container.getBoundingClientRect();
+  var deltaY = isNaN(requestedDeltaY) ? 0 : Number(requestedDeltaY);
+  // The deltaY is positive when the content should go down.
+  
+  var verticalEmptySpace = (containerRect.height - pageViewRect.height);
+  if (verticalEmptySpace > 0) {
+    // Just center the page vertically for this case.
+    deltaY = (containerRect.top - pageViewRect.top + verticalEmptySpace / 2);
+  } else if (pageViewRect.top + deltaY >= containerRect.top) {
+    // The page content may go down too much!
+    deltaY = (containerRect.top - pageViewRect.top);
+  } else if (pageViewRect.bottom + deltaY <= containerRect.bottom) {
+    // The page content may go up too much!
+    deltaY = (containerRect.bottom - pageViewRect.bottom);
+  }
+  container.scrollTop -= deltaY;
+
+  pageView = pdfViewer.currentPageView;
+  pageViewRect = pageView.div.getBoundingClientRect();
+  var rightPageView = pdfViewer.currentRightSidePageView;
+  var pageViewsLeft = pageViewRect.left,
+      pageViewsRight = rightPageView ?
+        rightPageView.div.getBoundingClientRect().right : pageViewRect.right;
+  var pageViewsWidth = pageViewsRight - pageViewsLeft;
+  
+  var deltaX = isNaN(requestedDeltaX) ? 0 : Number(requestedDeltaX);
+  var horizontalEmptySpace = (containerRect.width - pageViewsWidth);
+  if (horizontalEmptySpace > 0) {
+    // Just center the page horizontally for this case.
+    deltaX = (containerRect.left - pageViewsLeft + horizontalEmptySpace / 2);
+  } else if (pageViewsLeft + deltaX >= containerRect.left) {
+    // The page content may go right too much!
+    deltaX = (containerRect.left - pageViewsLeft);
+  } else if (pageViewsRight + deltaX <= containerRect.right) {
+    // The page content may go left too much!
+    deltaX = (containerRect.right - pageViewsRight);
+  }
+  container.scrollLeft -= deltaX;
+}
+
+function activateHandToolIfRequired() {
+  var pdfViewer = PDFViewerApplication.pdfViewer;
+  PDFViewerApplication.toggleHandTool(!pdfViewer.isInPresentationMode ||
+      (pdfViewer.currentScaleValue !== 'page-fit' &&
+       pdfViewer.currentScale + 0.005 > pdfViewer.currentPageFitScale));
+}
+
 function webViewerScaleChanging(e) {
   PDFViewerApplication._updateUIToolbar({
     scaleValue: e.presetValue,
@@ -1958,7 +2010,17 @@ function webViewerScaleChanging(e) {
   if (!PDFViewerApplication.initialized) {
     return;
   }
-  PDFViewerApplication.pdfViewer.update();
+
+  var pdfViewer = PDFViewerApplication.pdfViewer;
+  pdfViewer.update();
+  
+  if (pdfViewer.isInPresentationMode) {
+    adjustPositionInsidePage(e.previousPageNumber);
+  }
+
+  activateHandToolIfRequired();
+  RidiPdfViewer.nativeViewer.jsScaleChanged(e.scale, String(e.presetValue),
+      pdfViewer.currentPageFitScale);
 }
 
 function webViewerPageChanging(e) {
@@ -1981,53 +2043,201 @@ function webViewerPageChanging(e) {
   }
 }
 
+var previousScrollTop = -1;
+function webViewerPageChanged(e) {
+  if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
+    // Note : This also prevents page change while navigating with the hand tool.
+    adjustPositionInsidePage(e.pageNumber);
+  }
+  
+  var viewerContainer = PDFViewerApplication.pdfViewer.container;
+  if (e.pageNumber <= 2 || e.pageNumber >= PDFViewerApplication.pagesCount - 1) {
+    previousScrollTop = viewerContainer.scrollTop;
+    viewerContainer.onscroll = function webViewerScrolled() {
+      checkFirstAndLastPageOnScroll();
+      previousScrollTop = viewerContainer.scrollTop;
+    };
+  } else {
+    previousScrollTop = -1;
+    viewerContainer.onscroll = null;
+  }
+
+  RidiPdfViewer.nativeViewer.jsPageChanged(e.pageNumber);
+}
+
+/**
+ * @param {Boolean} scrollUp - true if the content is going up, otherwise false.
+ *                             If it's undefined, it is calculated by itself.
+ *
+ * @returns {Boolean} - true if the user is trying to move the content down out of the first page,
+ *                      or move the content up out of the last page. Otherwise returns false.
+ */
+var scrollCheckDisabled = false;
+var scrollCheckMinInterval = 100;
+function checkFirstAndLastPageOnScroll(scrollUp) {
+  if (scrollCheckDisabled) {
+    return;
+  }
+
+  var pdfViewer = PDFViewerApplication.pdfViewer;
+  var viewerContainer = pdfViewer.container;
+  var containerRect, mouseUpEvt;
+
+  if (scrollUp === undefined) {
+    scrollUp = (viewerContainer.scrollTop - previousScrollTop > 0);
+  } else {
+    scrollUp = !!scrollUp;
+  }
+
+  if (!scrollUp && PDFViewerApplication.page <= 2) {
+    var firstPageView = pdfViewer.getPageView(0);
+    if (!firstPageView) {
+      RidiPdfViewer.onError('Failed to get the first page view for checking scroll range.');
+    } else {
+      var firstPageRect = firstPageView.div.getBoundingClientRect();
+      containerRect = viewerContainer.getBoundingClientRect();
+
+      if (firstPageRect.top >= containerRect.top) {
+        // Release hand tool to prevent scrolling after closing the popup.
+        mouseUpEvt = document.createEvent('MouseEvents');
+        mouseUpEvt.initEvent('mouseup', true, true);
+        viewerContainer.dispatchEvent(mouseUpEvt);
+        
+        RidiPdfViewer.nativeViewer.jsScrollContentDownInFirstPage();
+
+        // Prevent showing multiple popups at the same moment.
+        scrollCheckDisabled = true;
+        setTimeout(function() {
+          scrollCheckDisabled = false;
+        }, scrollCheckMinInterval);
+
+        return true;
+      }
+    }
+  } else if (scrollUp && PDFViewerApplication.page >= PDFViewerApplication.pagesCount - 1) {
+    var lastPageView = pdfViewer.getPageView(PDFViewerApplication.pagesCount - 1);
+    if (!lastPageView) {
+      RidiPdfViewer.onError('Failed to get the last page view for checking scroll range.');
+    } else {
+      var lastPageRect = lastPageView.div.getBoundingClientRect();
+      containerRect = viewerContainer.getBoundingClientRect();
+
+      if (lastPageRect.bottom <= containerRect.bottom) {
+        mouseUpEvt = document.createEvent('MouseEvents');
+        mouseUpEvt.initEvent('mouseup', true, true);
+        viewerContainer.dispatchEvent(mouseUpEvt);
+
+        RidiPdfViewer.nativeViewer.jsScrollContentUpInLastPage();
+        
+        scrollCheckDisabled = true;
+        setTimeout(function() {
+          scrollCheckDisabled = false;
+        }, scrollCheckMinInterval);
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
 var zoomDisabled = false, zoomDisabledTimeout;
-function handleMouseWheel(evt) {
-  var MOUSE_WHEEL_DELTA_FACTOR = 40;
+function handleZoomByWheel(evt) {
+  var support = PDFViewerApplication.supportedMouseWheelZoomModifierKeys;
+  if ((evt.ctrlKey && !support.ctrlKey) ||
+      (evt.metaKey && !support.metaKey)) {
+    return;
+  }
+  // Only zoom the pages, not the entire viewer.
+  evt.preventDefault();
+  // NOTE: this check must be placed *after* preventDefault.
+  if (zoomDisabled) {
+    return;
+  }
+
+  var modifiedClientY = evt.clientY;
+  var currentPageId = PDFViewerApplication.page;
+  var pdfViewer = PDFViewerApplication.pdfViewer;
+  if (pdfViewer.isInPresentationMode) {
+    var currentPageRect = pdfViewer.currentLargerHeightPageView.div.getBoundingClientRect();
+
+    // To prevent accidental page switch to the previous / next page while zooming.
+    if (modifiedClientY < currentPageRect.top) {
+      modifiedClientY = currentPageRect.top;
+    } else if (modifiedClientY > currentPageRect.bottom) {
+      modifiedClientY = currentPageRect.bottom;
+    }
+  }
+
+  // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY
+  var MOUSE_WHEEL_DELTA_FACTOR = 10;
   var ticks = (evt.type === 'DOMMouseScroll') ? -evt.detail :
               evt.wheelDelta / MOUSE_WHEEL_DELTA_FACTOR;
   var direction = (ticks < 0) ? 'zoomOut' : 'zoomIn';
+  var previousScale = pdfViewer.currentScale;
+
+  PDFViewerApplication[direction](Math.abs(ticks));
+
+  var currentScale = pdfViewer.currentScale;
+  if (previousScale !== currentScale) {
+    // After scaling the page using zoomIn / zoomOut, the position of the upper-
+    // left corner is restored. When the mouse wheel is used, the position
+    // under the cursor should be restored instead.
+    var scrollLeftDelta, scrollTopDelta;
+    var scaleCorrectionFactor = currentScale / previousScale - 1;
+
+    var containerRect = pdfViewer.container.getBoundingClientRect();
+    var dx = (containerRect.left - evt.clientX);
+    var dy = (containerRect.top - modifiedClientY);
+    scrollLeftDelta = dx * scaleCorrectionFactor;
+    scrollTopDelta = dy * scaleCorrectionFactor;
+
+    if (pdfViewer.isInPresentationMode) {
+      adjustPositionInsidePage(currentPageId, scrollLeftDelta, scrollTopDelta);
+    } else {
+      pdfViewer.container.scrollTop -= scrollTopDelta;
+      pdfViewer.container.scrollLeft -= scrollLeftDelta;
+    }
+  }
+}
+
+function handleScrollByWheel(evt) {
+  evt.preventDefault();
+  if (Math.abs(evt.wheelDeltaY) > 10 && checkFirstAndLastPageOnScroll(evt.wheelDeltaY < 0)) {
+    // Mac trackpad sometimes provides a very small value (.. like a noise)
+    return;
+  }
 
   var pdfViewer = PDFViewerApplication.pdfViewer;
-  if (pdfViewer.isInPresentationMode) {
-    evt.preventDefault();
-    PDFViewerApplication.scrollPresentationMode(ticks *
-                                                MOUSE_WHEEL_DELTA_FACTOR);
-  } else if (evt.ctrlKey || evt.metaKey) {
-    var support = PDFViewerApplication.supportedMouseWheelZoomModifierKeys;
-    if ((evt.ctrlKey && !support.ctrlKey) ||
-        (evt.metaKey && !support.metaKey)) {
-      return;
-    }
-    // Only zoom the pages, not the entire viewer.
-    evt.preventDefault();
-    // NOTE: this check must be placed *after* preventDefault.
-    if (zoomDisabled) {
-      return;
-    }
+  var MOUSE_WHEEL_DELTA_FACTOR = 40;
+  var ticks = (evt.type === 'DOMMouseScroll') ? -evt.detail :
+              evt.wheelDelta / MOUSE_WHEEL_DELTA_FACTOR;
 
-    var previousScale = pdfViewer.currentScale;
+  var scaleBiggerThanPageFit = (pdfViewer.currentScale > pdfViewer.currentPageFitScale + 0.005);
 
-    PDFViewerApplication[direction](Math.abs(ticks));
-
-    var currentScale = pdfViewer.currentScale;
-    if (previousScale !== currentScale) {
-      // After scaling the page via zoomIn/zoomOut, the position of the upper-
-      // left corner is restored. When the mouse wheel is used, the position
-      // under the cursor should be restored instead.
-      var scaleCorrectionFactor = currentScale / previousScale - 1;
-      var rect = pdfViewer.container.getBoundingClientRect();
-      var dx = evt.clientX - rect.left;
-      var dy = evt.clientY - rect.top;
-      pdfViewer.container.scrollLeft += dx * scaleCorrectionFactor;
-      pdfViewer.container.scrollTop += dy * scaleCorrectionFactor;
-    }
+  if (pdfViewer.isInPresentationMode && !scaleBiggerThanPageFit) {
+    PDFViewerApplication.scrollPresentationMode(ticks * MOUSE_WHEEL_DELTA_FACTOR);
   } else {
+    if (pdfViewer.isInPresentationMode) {
+      adjustPositionInsidePage(PDFViewerApplication.page, evt.wheelDeltaX, evt.wheelDeltaY);
+    } else {
+      pdfViewer.container.scrollTop -= evt.wheelDeltaY;
+      pdfViewer.container.scrollLeft -= evt.wheelDeltaX;
+    }
+    
     zoomDisabled = true;
     clearTimeout(zoomDisabledTimeout);
     zoomDisabledTimeout = setTimeout(function () {
       zoomDisabled = false;
-    }, 1000);
+    }, 13);
+  }
+}
+
+function handleMouseWheel(evt) {
+  if (evt.ctrlKey || evt.metaKey) {
+    handleZoomByWheel(evt);
+  } else {
+    handleScrollByWheel(evt);
   }
 }
 
@@ -2058,7 +2268,23 @@ window.addEventListener('keydown', function keydown(evt) {
             (evt.metaKey ? 8 : 0);
 
   var pdfViewer = PDFViewerApplication.pdfViewer;
-  var isViewerInPresentationMode = pdfViewer && pdfViewer.isInPresentationMode;
+
+  var mouseWheelUnit = 120;
+  var goNext = function() {
+    if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
+      PDFViewerApplication.page += PDFViewerApplication.pdfViewer.pageSwitchUnit;
+    } else {
+      PDFViewerApplication.pdfViewer.container.scrollTop += mouseWheelUnit;
+    }
+  };
+  
+  var goPrev = function() {
+    if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
+      PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
+    } else {
+      PDFViewerApplication.pdfViewer.container.scrollTop -= mouseWheelUnit;
+    }
+  };
 
   // First, handle the key bindings that are independent whether an input
   // control is selected or not.
@@ -2090,56 +2316,23 @@ window.addEventListener('keydown', function keydown(evt) {
       case 107: // FF '+' and '='
       case 187: // Chrome '+'
       case 171: // FF with German keyboard
-        if (!isViewerInPresentationMode) {
-          PDFViewerApplication.zoomIn();
-        }
+        PDFViewerApplication.zoomIn();
         handled = true;
         break;
       case 173: // FF/Mac '-'
       case 109: // FF '-'
       case 189: // Chrome '-'
-        if (!isViewerInPresentationMode) {
-          PDFViewerApplication.zoomOut();
-        }
+        PDFViewerApplication.zoomOut();
         handled = true;
         break;
       case 48: // '0'
       case 96: // '0' on Numpad of Swedish keyboard
-        if (!isViewerInPresentationMode) {
-          // keeping it unhandled (to restore page zoom to 100%)
-          setTimeout(function () {
-            // ... and resetting the scale after browser adjusts its scale
-            pdfViewer.currentScaleValue = DEFAULT_SCALE_VALUE;
-          });
-          handled = false;
-        }
-        break;
-    }
-  }
-
-//#if !(FIREFOX || MOZCENTRAL)
-  // CTRL or META without shift
-  if (cmd === 1 || cmd === 8) {
-    switch (evt.keyCode) {
-      case 83: // s
-        PDFViewerApplication.download();
-        handled = true;
-        break;
-    }
-  }
-//#endif
-
-  // CTRL+ALT or Option+Command
-  if (cmd === 3 || cmd === 10) {
-    switch (evt.keyCode) {
-      case 80: // p
-        PDFViewerApplication.requestPresentationMode();
-        handled = true;
-        break;
-      case 71: // g
-        // focuses input#pageNumber field
-        PDFViewerApplication.appConfig.toolbar.pageNumber.select();
-        handled = true;
+        // keeping it unhandled (to restore page zoom to 100%)
+        setTimeout(function () {
+          // ... and resetting the scale after browser adjusts its scale
+          pdfViewer.currentScaleValue = DEFAULT_SCALE_VALUE;
+        });
+        handled = false;
         break;
     }
   }
@@ -2164,27 +2357,16 @@ window.addEventListener('keydown', function keydown(evt) {
   var ensureViewerFocused = false;
 
   if (cmd === 0) { // no control key pressed at all.
+    // Note : first / last page check for keydown events is done at ReaderWebEngineWindow.
     switch (evt.keyCode) {
-      case 38: // up arrow
       case 33: // pg up
       case 8: // backspace
-        if (!isViewerInPresentationMode &&
-            pdfViewer.currentScaleValue !== 'page-fit') {
-          break;
-        }
-        /* in presentation mode */
-        /* falls through */
+        PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
+        handled = true;
+        break;
+      case 38: // up arrow
       case 37: // left arrow
-        // horizontal scrolling using arrow keys
-        if (pdfViewer.isHorizontalScrollbarEnabled) {
-          break;
-        }
-        /* falls through */
-      case 75: // 'k'
-      case 80: // 'p'
-        if (PDFViewerApplication.page > 1) {
-          PDFViewerApplication.page--;
-        }
+        goPrev();
         handled = true;
         break;
       case 27: // esc key
@@ -2198,51 +2380,30 @@ window.addEventListener('keydown', function keydown(evt) {
           handled = true;
         }
         break;
-      case 40: // down arrow
       case 34: // pg down
       case 32: // spacebar
-        if (!isViewerInPresentationMode &&
-            pdfViewer.currentScaleValue !== 'page-fit') {
-          break;
-        }
-        /* falls through */
-      case 39: // right arrow
-        // horizontal scrolling using arrow keys
-        if (pdfViewer.isHorizontalScrollbarEnabled) {
-          break;
-        }
-        /* falls through */
-      case 74: // 'j'
-      case 78: // 'n'
-        if (PDFViewerApplication.page < PDFViewerApplication.pagesCount) {
-          PDFViewerApplication.page++;
-        }
+        PDFViewerApplication.page += PDFViewerApplication.pdfViewer.pageSwitchUnit;
         handled = true;
         break;
-
+      case 40: // down arrow
+      case 39: // right arrow
+        goNext();
+        handled = true;
+        break;
       case 36: // home
-        if (isViewerInPresentationMode || PDFViewerApplication.page > 1) {
+        if (PDFViewerApplication.page > 1) {
           PDFViewerApplication.page = 1;
           handled = true;
           ensureViewerFocused = true;
         }
         break;
       case 35: // end
-        if (isViewerInPresentationMode ||
+        if (PDFViewerApplication.pdfDocument &&
             PDFViewerApplication.page < PDFViewerApplication.pagesCount) {
           PDFViewerApplication.page = PDFViewerApplication.pagesCount;
           handled = true;
           ensureViewerFocused = true;
         }
-        break;
-
-      case 72: // 'h'
-        if (!isViewerInPresentationMode) {
-          PDFViewerApplication.handTool.toggle();
-        }
-        break;
-      case 82: // 'r'
-        PDFViewerApplication.rotatePages(90);
         break;
     }
   }
@@ -2250,23 +2411,13 @@ window.addEventListener('keydown', function keydown(evt) {
   if (cmd === 4) { // shift-key
     switch (evt.keyCode) {
       case 32: // spacebar
-        if (!isViewerInPresentationMode &&
-            pdfViewer.currentScaleValue !== 'page-fit') {
-          break;
-        }
-        if (PDFViewerApplication.page > 1) {
-          PDFViewerApplication.page--;
-        }
+        PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
         handled = true;
-        break;
-
-      case 82: // 'r'
-        PDFViewerApplication.rotatePages(-90);
         break;
     }
   }
 
-  if (!handled && !isViewerInPresentationMode) {
+  if (!handled) {
     // 33=Page Up  34=Page Down  35=End    36=Home
     // 37=Left     38=Up         39=Right  40=Down
     // 32=Spacebar
@@ -2279,16 +2430,12 @@ window.addEventListener('keydown', function keydown(evt) {
   if (cmd === 2) { // alt-key
     switch (evt.keyCode) {
       case 37: // left arrow
-        if (isViewerInPresentationMode) {
-          PDFViewerApplication.pdfHistory.back();
-          handled = true;
-        }
+        PDFViewerApplication.pdfHistory.back();
+        handled = true;
         break;
       case 39: // right arrow
-        if (isViewerInPresentationMode) {
-          PDFViewerApplication.pdfHistory.forward();
-          handled = true;
-        }
+        PDFViewerApplication.pdfHistory.forward();
+        handled = true;
         break;
     }
   }

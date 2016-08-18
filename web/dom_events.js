@@ -53,6 +53,7 @@
       var event = document.createEvent('UIEvents');
       event.initUIEvent('pagechange', true, true, window, 0);
       event.pageNumber = e.pageNumber;
+      event.previousPageNumber = e.previousPageNumber;
       e.source.container.dispatchEvent(event);
     });
     eventBus.on('pagesinit', function (e) {

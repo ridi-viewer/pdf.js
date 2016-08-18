@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* globals RidiPdfViewer */
 
 'use strict';
 
@@ -99,56 +100,72 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
 
     /**
      * @param dest - The PDF destination object.
+     * @param ignoreErrorWithoutRejection - If set, the returned promise always resolves
+     * even when an error occurs (resolves with pageNumber and dest undefined).
      */
-    navigateTo: function PDFLinkService_navigateTo(dest) {
-      var destString = '';
+    getDestinationPagePromise: function PDFLinkService_getDestinationPagePromise(dest,
+                                   ignoreErrorWithoutRejection) {
       var self = this;
+      return new Promise(function(resolve, reject) {
+        var destString = '';
 
-      var goToDestination = function(destRef) {
-        // dest array looks like that: <page-ref> </XYZ|/FitXXX> <args..>
-        var pageNumber = destRef instanceof Object ?
-          self._pagesRefCache[destRef.num + ' ' + destRef.gen + ' R'] :
-          (destRef + 1);
-        if (pageNumber) {
-          if (pageNumber > self.pagesCount) {
-            console.error('PDFLinkService_navigateTo: ' +
-                          'Trying to navigate to a non-existent page.');
-            return;
-          }
-          self.pdfViewer.scrollPageIntoView(pageNumber, dest);
+        var getDestinationPage = function(destRef) {
+          // dest array looks like that: <page-ref> </XYZ|/FitXXX> <args..>
+          var pageNumber = destRef instanceof Object ?
+            self._pagesRefCache[destRef.num + ' ' + destRef.gen + ' R'] :
+            (destRef + 1);
+          if (pageNumber) {
+            if (pageNumber > self.pagesCount) {
+              pageNumber = self.pagesCount;
+            }
+            resolve(pageNumber, dest);
 
-          if (self.pdfHistory) {
-            // Update the browsing history.
-            self.pdfHistory.push({
-              dest: dest,
-              hash: destString,
-              page: pageNumber
+            if (self.pdfHistory) {
+              // Update the browsing history.
+              self.pdfHistory.push({
+                dest: dest,
+                hash: destString,
+                page: pageNumber
+              });
+            }
+          } else {
+            self.pdfDocument.getPageIndex(destRef).then(function (pageIndex) {
+              var pageNum = pageIndex + 1;
+              var cacheKey = destRef.num + ' ' + destRef.gen + ' R';
+              self._pagesRefCache[cacheKey] = pageNum;
+              getDestinationPage(destRef);
             });
           }
-        } else {
-          self.pdfDocument.getPageIndex(destRef).then(function (pageIndex) {
-            var pageNum = pageIndex + 1;
-            var cacheKey = destRef.num + ' ' + destRef.gen + ' R';
-            self._pagesRefCache[cacheKey] = pageNum;
-            goToDestination(destRef);
-          });
-        }
-      };
+        };
 
-      var destinationPromise;
-      if (typeof dest === 'string') {
-        destString = dest;
-        destinationPromise = this.pdfDocument.getDestination(dest);
-      } else {
-        destinationPromise = Promise.resolve(dest);
-      }
-      destinationPromise.then(function(destination) {
-        dest = destination;
-        if (!(destination instanceof Array)) {
-          return; // invalid destination
+        var destinationPromise;
+        if (typeof dest === 'string') {
+          destString = dest;
+          destinationPromise = self.pdfDocument.getDestination(dest);
+        } else {
+          destinationPromise = Promise.resolve(dest);
         }
-        goToDestination(destination[0]);
+        destinationPromise.then(function(destination) {
+          dest = destination;
+          if (!(destination instanceof Array)) {
+            if (ignoreErrorWithoutRejection) {
+              resolve();
+            } else {
+              reject(new Error('invalid destination'));
+            }
+            return;
+          }
+          getDestinationPage(destination[0]);
+        });
       });
+    },
+
+    /**
+     * @param dest - The PDF destination object.
+     */
+    navigateTo: function PDFLinkService_navigateTo(dest) {
+      this.getDestinationPagePromise(dest)
+        .then(this.pdfViewer.scrollPageIntoView.bind(this.pdfViewer), RidiPdfViewer.onError); 
     },
 
     /**
@@ -157,15 +174,30 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
      */
     getDestinationHash: function PDFLinkService_getDestinationHash(dest) {
       if (typeof dest === 'string') {
-        // In practice, a named destination may contain only a number.
-        // If that happens, use the '#nameddest=' form to avoid the link
-        // redirecting to a page, instead of the correct destination.
-        return this.getAnchorUrl(
-          '#' + (isPageNumber(dest) ? 'nameddest=' : '') + escape(dest));
+        return this.getAnchorUrl('#' + escape(dest));
       }
       if (dest instanceof Array) {
-        var str = JSON.stringify(dest);
-        return this.getAnchorUrl('#' + escape(str));
+        var destRef = dest[0]; // see navigateTo method for dest format
+        var pageNumber = destRef instanceof Object ?
+          this._pagesRefCache[destRef.num + ' ' + destRef.gen + ' R'] :
+          (destRef + 1);
+        if (pageNumber) {
+          var pdfOpenParams = this.getAnchorUrl('#page=' + pageNumber);
+          var destKind = dest[1];
+          if (typeof destKind === 'object' && 'name' in destKind &&
+              destKind.name === 'XYZ') {
+            var scale = (dest[4] || this.pdfViewer.currentScaleValue);
+            var scaleNumber = parseFloat(scale);
+            if (scaleNumber) {
+              scale = scaleNumber * 100;
+            }
+            pdfOpenParams += '&zoom=' + scale;
+            if (dest[2] || dest[3]) {
+              pdfOpenParams += ',' + (dest[2] || 0) + ',' + (dest[3] || 0);
+            }
+          }
+          return pdfOpenParams;
+        }
       }
       return this.getAnchorUrl('');
     },
@@ -290,15 +322,11 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
           break;
 
         case 'NextPage':
-          if (this.page < this.pagesCount) {
-            this.page++;
-          }
+          this.page += this.pdfViewer.pageSwitchUnit;
           break;
 
         case 'PrevPage':
-          if (this.page > 1) {
-            this.page--;
-          }
+          this.page -= this.pdfViewer.pageSwitchUnit;
           break;
 
         case 'LastPage':

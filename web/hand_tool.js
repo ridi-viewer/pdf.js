@@ -66,17 +66,6 @@ var HandTool = (function HandToolClosure() {
         }
       }.bind(this), function rejected(reason) {});
     }.bind(this));
-
-    this.eventBus.on('presentationmodechanged', function (e) {
-      if (e.switchInProgress) {
-        return;
-      }
-      if (e.active) {
-        this.enterPresentationMode();
-      } else {
-        this.exitPresentationMode();
-      }
-    }.bind(this));
   }
 
   HandTool.prototype = {
@@ -87,21 +76,12 @@ var HandTool = (function HandToolClosure() {
       return !!this.handTool.active;
     },
 
-    toggle: function HandTool_toggle() {
-      this.handTool.toggle();
-    },
-
-    enterPresentationMode: function HandTool_enterPresentationMode() {
-      if (this.isActive) {
-        this.wasActive = true;
-        this.handTool.deactivate();
-      }
-    },
-
-    exitPresentationMode: function HandTool_exitPresentationMode() {
-      if (this.wasActive) {
-        this.wasActive = false;
+    toggle: function HandTool_toggle(activate) {
+      activate = (activate === undefined) ? (!this.handTool.active) : (!!activate);
+      if (activate) {
         this.handTool.activate();
+      } else {
+        this.handTool.deactivate();
       }
     }
   };

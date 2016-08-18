@@ -32,9 +32,19 @@
   background-color: white;
 }
 
+.pdfViewer .twoPageContainer {
+  display: flex;
+  align-items: center;
+  margin: 0px auto 10px auto;
+}
+
 .pdfViewer.removePageBorders .page {
   margin: 0px auto 10px auto;
   border: none;
+}
+
+.pdfViewer.removePageBorders .twoPageContainer .page {
+  margin: 0px;
 }
 
 .pdfViewer.singlePageView {
@@ -51,32 +61,29 @@
   display: block;
 }
 
+.loadingIconImage {
+  background-color: rgba(0, 0, 0, 0.7);
+  background-clip: content-box;
+  border: 10px solid rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  width: 24px;
+  height: auto;
+  opacity: 0.4;
+}
+
 .pdfViewer .page .loadingIcon {
   position: absolute;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   left: 0;
   top: 0;
   right: 0;
   bottom: 0;
-  background: url('images/loading-icon.gif') center no-repeat;
+  opacity: 1;
 }
 
-.pdfPresentationMode:-webkit-full-screen .pdfViewer .page {
-  margin-bottom: 100%;
-  border: 0;
+.scaleBiggerThanPageFit .pdfViewer .page .loadingIcon {
+  opacity: 0;
 }
 
-.pdfPresentationMode:-moz-full-screen .pdfViewer .page {
-  margin-bottom: 100%;
-  border: 0;
-}
-
-.pdfPresentationMode:-ms-fullscreen .pdfViewer .page {
-  margin-bottom: 100% !important;
-  border: 0;
-}
-
-.pdfPresentationMode:fullscreen .pdfViewer .page {
-  margin-bottom: 100%;
-  border: 0;
-}

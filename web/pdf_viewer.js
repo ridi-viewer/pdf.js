@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* globals RidiPdfViewer */
 
 'use strict';
 
@@ -62,7 +63,18 @@ var PresentationModeState = {
   FULLSCREEN: 3,
 };
 
-var DEFAULT_CACHE_SIZE = 10;
+/**
+ * Qt 5.7.0 on Mac seems to leak memory while drawing images, (sometimes uses 4GB+)
+ * so it's better to have a very large cache (10 MB * 180 pages : approximately up to 1.8GB)
+ * to avoid drawing tasks.
+ *
+ * This assumes that generally Mac PC has larger RAM than Windows PC.
+ *
+ * The values below are for Mac.
+ */
+var DEFAULT_CACHE_SIZE = 180;
+var DEFAULT_VERTICAL_TOLERANCE = 500;
+var DEFAULT_ADJACENT_PAGES_TO_DRAW = 7;
 
 /**
  * @typedef {Object} PDFViewerOptions
@@ -144,9 +156,95 @@ var PDFViewer = (function pdfViewer() {
     if (this.removePageBorders) {
       this.viewer.classList.add('removePageBorders');
     }
+
+    this.eventBus.on('loadingIconVisibilityChanged', function(e) {
+      if (this._getAdjustedPageNumber(e.pageNumber) === this.currentPageNumber) {
+        this._updateLoadingIcons(e.visible);
+      }
+    }.bind(this));
+
+    this.eventBus.on('resize', this._updateScaleClassList.bind(this));
   }
 
   PDFViewer.prototype = /** @lends PDFViewer.prototype */{
+    /**
+     * PageView cache options
+     */
+    get defaultCacheSize() {
+      return this._defaultCacheSize || DEFAULT_CACHE_SIZE;
+    },
+
+    set defaultCacheSize(val) {
+      this._defaultCacheSize = Math.max(val, 10);
+    },
+    
+    get defaultVerticalTolerance() {
+      return this._defaultVerticalTolerance || DEFAULT_VERTICAL_TOLERANCE;
+    },
+
+    set defaultVerticalTolerance(val) {
+      this._defaultVerticalTolerance = Math.max(val, 0);
+    },
+    
+    get defaultAdjacentPagesToDraw() {
+      return this._defaultAdjacentPagesToDraw || DEFAULT_ADJACENT_PAGES_TO_DRAW;
+    },
+
+    set defaultAdjacentPagesToDraw(val) {
+      this._defaultAdjacentPagesToDraw = Math.max(val, 0);
+    },
+
+    get twoPageMode() {
+      return this._twoPageMode;
+    },
+
+    set twoPageMode(val) {
+      val = !!val;
+      var currentPageNumber = this._currentPageNumber + (this.isLookingAtRightSidePage ? 1 : 0);
+      var pageView;
+
+      for (var i = 0; i < this._pages.length; i++) {
+        pageView = this._pages[i];
+        pageView.containerHasAnEmptyPageAfterCover = this._hasAnEmptyPageAfterCover;
+        pageView.twoPageMode = val;
+      }
+
+      this._twoPageMode = val;
+      if (!val) {
+        // Restore the default state if exiting twoPageMode.
+        this._hasAnEmptyPageAfterCover = false;
+      }
+      
+      this.currentPageNumber = currentPageNumber;
+      if (val && this.currentPageNumber !== currentPageNumber) {
+        // When currentPageNumber becomes the right side pageNumber after changing the mode,
+        // Try to restore the left corner.
+        var rightPageLeft = this._pages[currentPageNumber - 1].div.getBoundingClientRect().left;
+        this.container.scrollLeft += rightPageLeft;
+      }
+      
+      this.update();
+    },
+
+    /**
+     * Indicates two page display will begin after page 2. (2/3 Mode)
+     * Actually no empty page is inserted though...
+     */
+    get hasAnEmptyPageAfterCover() {
+      return this._hasAnEmptyPageAfterCover;
+    },
+
+    /**
+     * Setting this property will always activate twoPageMode.
+     */
+    set hasAnEmptyPageAfterCover(val) {
+      if (this._twoPageMode) {
+        this.twoPageMode = false;
+      }
+      this._hasAnEmptyPageAfterCover = !!val;
+      this.twoPageMode = true;
+    },
+
     get pagesCount() {
       return this._pages.length;
     },
@@ -155,11 +253,62 @@ var PDFViewer = (function pdfViewer() {
       return this._pages[index];
     },
 
+    get currentPageView() {
+      return this._pages[this._currentPageNumber - 1];
+    },
+    
+    get currentRightSidePageView() {
+      if (this._twoPageMode &&
+          !(this._hasAnEmptyPageAfterCover && this._currentPageNumber === 1)) {
+        return this._pages[this._currentPageNumber];
+      }
+      return null;
+    },
+
+    /**
+     * Get one with the larger height, of the left / right side pageView.
+     * Just returns currentPageView if twoPageMode is inactive.
+     */
+    get currentLargerHeightPageView() {
+      var pageView = this.currentPageView;
+      var rightSidePageView = this.currentRightSidePageView;
+      if (rightSidePageView && rightSidePageView.div.clientHeight > pageView.div.clientHeight) {
+        pageView = rightSidePageView;
+      }
+      return pageView;
+    },
+   
+    /**
+     * Adjusts the given page number to comply with the current page view mode.
+     * May be useful to find page number of the currently visible page at the left side.
+     *
+     * If the pageNumber is out of bounds, it is bounded into valid range.
+     */
+    _getAdjustedPageNumber: function pdfViewer_getAdjustedPageNumber(pageNumber) {
+      pageNumber = Math.min(Math.max(1, pageNumber), this.pagesCount);
+      if (!this.twoPageMode) {
+        return pageNumber;
+      }
+      
+      if (!this.hasAnEmptyPageAfterCover) {
+        // Page Number will proceed like : 1, 3, 5, 7, 9 ..
+        // Even number pages will be displayed next to the odd number pages.
+        return pageNumber - ((pageNumber % 2 === 0) ? 1 : 0);
+      } else {
+        // 1, 2, 4, 6, 8, 10 ..
+        return (pageNumber === 1) ? 1 : (pageNumber - ((pageNumber % 2 === 0) ? 0 : 1));
+      }
+    },
+
+    get pageSwitchUnit() {
+      return (this._twoPageMode ? 2 : 1);
+    },
+
     /**
      * @returns {number}
      */
     get currentPageNumber() {
-      return this._currentPageNumber;
+      return this._getAdjustedPageNumber(this._currentPageNumber);
     },
 
     /**
@@ -188,16 +337,12 @@ var PDFViewer = (function pdfViewer() {
         }
         return;
       }
-
-      if (!(0 < val && val <= this.pagesCount)) {
-        console.error('PDFViewer_setCurrentPageNumber: "' + val +
-                      '" is out of bounds.');
-        return;
-      }
-
+      
+      val = this._getAdjustedPageNumber(val);
       var arg = {
         source: this,
         pageNumber: val,
+        previousPageNumber: this._currentPageNumber
       };
       this._currentPageNumber = val;
       this.eventBus.dispatch('pagechanging', arg);
@@ -206,6 +351,34 @@ var PDFViewer = (function pdfViewer() {
       if (resetCurrentPageView) {
         this._resetCurrentPageView();
       }
+    },
+
+    get isLookingAtRightSidePage() {
+      var rightPage = this.currentRightSidePageView;
+      if (!rightPage) {
+        return false;
+      }
+
+      var rightPageViewRect = rightPage.div.getBoundingClientRect();
+      var containerRect = this.container.getBoundingClientRect();
+      var containerRectMiddle = (containerRect.left + containerRect.right) / 2;
+     
+      // L/R < 3/4
+      return rightPageViewRect.left < containerRectMiddle - rightPageViewRect.width / 8;
+    },
+    
+    get isLookingAtLeftSidePage() {
+      var rightPage = this.currentRightSidePageView;
+      if (!rightPage) {
+        return !!this.currentPageView;
+      }
+
+      var rightPageViewRect = rightPage.div.getBoundingClientRect();
+      var containerRect = this.container.getBoundingClientRect();
+      var containerRectMiddle = (containerRect.left + containerRect.right) / 2;
+      
+      // L/R > 4/3
+      return rightPageViewRect.left > containerRectMiddle + rightPageViewRect.width / 8;
     },
 
     /**
@@ -248,6 +421,64 @@ var PDFViewer = (function pdfViewer() {
         return;
       }
       this._setScale(val, false);
+    },
+    
+    /** 
+     * @returns {number} - The scale in page-width mode
+     *                     for the current page on the current viewport.
+     */
+    get currentPageWidthScale() {
+      var currentPage = this.currentPageView;
+      if (!currentPage) {
+        return DEFAULT_SCALE;
+      }
+      
+      var hPadding = (this.isInPresentationMode || this.removePageBorders) ?
+        0 : SCROLLBAR_PADDING;
+      var pageScale = currentPage.scale;
+      var pageWidth = currentPage.width;
+      
+      var secondPage = this.currentRightSidePageView;
+      if (secondPage) {
+        hPadding *= 2;
+        pageScale = Math.min(pageScale, secondPage.scale);
+        pageWidth += secondPage.width;
+      }
+
+      return pageScale * ((this.container.clientWidth - hPadding) / pageWidth);
+    },
+
+    /** 
+     * @returns {number} - The scale in page-height mode 
+     *                     for the current page on the current viewport
+     */
+    get currentPageHeightScale() {
+      var currentPage = this.currentPageView;
+      if (!currentPage) {
+        return DEFAULT_SCALE;
+      }
+
+      var vPadding = (this.isInPresentationMode || this.removePageBorders) ?
+        0 : VERTICAL_PADDING;
+      var pageScale = currentPage.scale;
+      var pageHeight = currentPage.height;
+      
+      var secondPage = this.currentRightSidePageView;
+      if (secondPage) {
+        vPadding *= 2;
+        pageScale = Math.min(pageScale, secondPage.scale);
+        pageHeight = Math.max(pageHeight, secondPage.height);
+      }
+
+      return pageScale * ((this.container.clientHeight - vPadding) / pageHeight);
+    },
+
+    /** 
+     * @returns {number} - The scale in page-fit mode
+     *                     for the current page on the current viewport.
+     */
+    get currentPageFitScale() {
+      return Math.min(this.currentPageWidthScale, this.currentPageHeightScale);
     },
 
     /**
@@ -348,6 +579,8 @@ var PDFViewer = (function pdfViewer() {
             container: this.viewer,
             eventBus: this.eventBus,
             id: pageNum,
+            twoPageMode: this._twoPageMode,
+            containerHasAnEmptyPageAfterCover: this._hasAnEmptyPageAfterCover,
             scale: scale,
             defaultViewport: viewport.clone(),
             renderingQueue: this.renderingQueue,
@@ -397,12 +630,40 @@ var PDFViewer = (function pdfViewer() {
       }.bind(this));
     },
 
+    /**
+     * Note : if many pages are showing vertically, the currentPage (topmost page) may be rendered
+     * but other visible (but not current) pages may be still being rendered.
+     * Hiding both loadingIconOverlay and loadingIconDiv would be inappropriate in such situations.
+     */
+    get isCurrentPageRendering() {
+      function isPageRendering(pageView) {
+        return (pageView ? !!pageView.loadingIconDiv : false);
+      }
+      
+      if (this.isLookingAtLeftSidePage) {
+        return isPageRendering(this.currentPageView);
+      } else if (this.isLookingAtRightSidePage) {
+        return isPageRendering(this.currentRightSidePageView);
+      }
+      // When the user is looking at ambiguous location.
+      return isPageRendering(this.currentPageView) ||
+        isPageRendering(this.currentRightSidePageView);
+    },
+    
+    _updateLoadingIcons: function pdfViewer_updateLoadingIcons(currentLoadingIconVisible) {
+      var classListOperation =
+        (currentLoadingIconVisible || this.isCurrentPageRendering) ? 'add' : 'remove';
+      this.container.classList[classListOperation]('rendering');
+    },
+
     _resetView: function () {
+      this._twoPageMode = false;
+      this._hasAnEmptyPageAfterCover = false;
       this._pages = [];
       this._currentPageNumber = 1;
       this._currentScale = UNKNOWN_SCALE;
       this._currentScaleValue = null;
-      this._buffer = new PDFPageViewBuffer(DEFAULT_CACHE_SIZE);
+      this._buffer = new PDFPageViewBuffer(this.defaultCacheSize);
       this._location = null;
       this._pagesRotation = 0;
       this._pagesRequests = [];
@@ -421,26 +682,36 @@ var PDFViewer = (function pdfViewer() {
       for (var i = 0, ii = this._pages.length; i < ii; i++) {
         this._pages[i].updatePosition();
       }
+      this._updateLoadingIcons();
     },
 
     _setScaleDispatchEvent: function pdfViewer_setScaleDispatchEvent(
-        newScale, newValue, preset) {
+        newScale, newValue, preset, previousPageNumber) {
       var arg = {
         source: this,
         scale: newScale,
+        previousPageNumber: previousPageNumber,
         presetValue: preset ? newValue : undefined
       };
       this.eventBus.dispatch('scalechanging', arg);
       this.eventBus.dispatch('scalechange', arg);
     },
 
+    _updateScaleClassList: function pdfViewer_updateScaleClassList() {
+      var classListOperation =
+        (this._currentScaleValue > this.currentPageFitScale + 0.005) ? 'add' : 'remove';
+      this.container.classList[classListOperation]('scaleBiggerThanPageFit');
+    },
+
     _setScaleUpdatePages: function pdfViewer_setScaleUpdatePages(
-        newScale, newValue, noScroll, preset) {
+        newScale, newValue, noScroll, preset, respectCurrentPositionForPageFit) {
       this._currentScaleValue = newValue.toString();
+      var previousPageNumber = this._currentPageNumber;
+      this._updateScaleClassList();
 
       if (isSameScale(this._currentScale, newScale)) {
         if (preset) {
-          this._setScaleDispatchEvent(newScale, newValue, true);
+          this._setScaleDispatchEvent(newScale, newValue, true, previousPageNumber);
         }
         return;
       }
@@ -452,8 +723,10 @@ var PDFViewer = (function pdfViewer() {
 
       if (!noScroll) {
         var page = this._currentPageNumber, dest;
-        if (this._location && !pdfjsLib.PDFJS.ignoreCurrentPositionOnZoom &&
-            !(this.isInPresentationMode || this.isChangingPresentationMode)) {
+        
+        if (newValue === 'page-fit' && !respectCurrentPositionForPageFit) {
+          dest = [null, { name: 'FitB' }]; 
+        } else if (this._location && !pdfjsLib.PDFJS.ignoreCurrentPositionOnZoom) {
           page = this._location.pageNumber;
           dest = [null, { name: 'XYZ' }, this._location.left,
                   this._location.top, null];
@@ -461,7 +734,7 @@ var PDFViewer = (function pdfViewer() {
         this.scrollPageIntoView(page, dest);
       }
 
-      this._setScaleDispatchEvent(newScale, newValue, preset);
+      this._setScaleDispatchEvent(newScale, newValue, preset, previousPageNumber);
 
       if (this.defaultRenderingQueue) {
         this.update();
@@ -472,40 +745,38 @@ var PDFViewer = (function pdfViewer() {
       var scale = parseFloat(value);
 
       if (scale > 0) {
-        this._setScaleUpdatePages(scale, value, noScroll, false);
+        var pageFitScale = this.currentPageFitScale;
+        var pageFitScaleDelta = (scale - pageFitScale);
+        if (!this.isInPresentationMode) {
+          // Approximate nearby scale to page-fit scale.
+          pageFitScaleDelta = Math.abs(pageFitScaleDelta);
+        }
+
+        if (pageFitScaleDelta < 0.005) {
+          scale = pageFitScale;
+          value = 'page-fit';
+        }
+
+        this._setScaleUpdatePages(scale, value, noScroll, false, true);
       } else {
         var currentPage = this._pages[this._currentPageNumber - 1];
         if (!currentPage) {
           return;
         }
-        var hPadding = (this.isInPresentationMode || this.removePageBorders) ?
-          0 : SCROLLBAR_PADDING;
-        var vPadding = (this.isInPresentationMode || this.removePageBorders) ?
-          0 : VERTICAL_PADDING;
-        var pageWidthScale = (this.container.clientWidth - hPadding) /
-                             currentPage.width * currentPage.scale;
-        var pageHeightScale = (this.container.clientHeight - vPadding) /
-                              currentPage.height * currentPage.scale;
+      
         switch (value) {
           case 'page-actual':
             scale = 1;
             break;
           case 'page-width':
-            scale = pageWidthScale;
+            scale = this.currentPageWidthScale;
             break;
           case 'page-height':
-            scale = pageHeightScale;
-            break;
-          case 'page-fit':
-            scale = Math.min(pageWidthScale, pageHeightScale);
+            scale = this.currentPageHeightScale;
             break;
           case 'auto':
-            var isLandscape = (currentPage.width > currentPage.height);
-            // For pages in landscape mode, fit the page height to the viewer
-            // *unless* the page would thus become too wide to fit horizontally.
-            var horizontalScale = isLandscape ?
-              Math.min(pageHeightScale, pageWidthScale) : pageWidthScale;
-            scale = Math.min(MAX_AUTO_SCALE, horizontalScale);
+          case 'page-fit':
+            scale = this.currentPageFitScale;
             break;
           default:
             console.error('PDFViewer_setScale: "' + value +
@@ -526,8 +797,7 @@ var PDFViewer = (function pdfViewer() {
         this._setScale(this._currentScaleValue, true);
       }
 
-      var pageView = this._pages[this._currentPageNumber - 1];
-      scrollIntoView(pageView.div);
+      scrollIntoView(this.currentPageView.div);
     },
 
     /**
@@ -542,7 +812,7 @@ var PDFViewer = (function pdfViewer() {
         return;
       }
 
-      if (this.isInPresentationMode || !dest) {
+      if (!dest) {
         this._setCurrentPageNumber(pageNumber, /* resetCurrentPageView */ true);
         return;
       }
@@ -666,37 +936,28 @@ var PDFViewer = (function pdfViewer() {
         return;
       }
 
-      var suggestedCacheSize = Math.max(DEFAULT_CACHE_SIZE,
-          2 * visiblePages.length + 1);
+      /**
+       * Note : cache should be big enough!
+       * Otherwise infinite rendering will occur (loops of pageView destroy - draw)
+       */
+      var suggestedCacheSize = Math.max(this.defaultCacheSize, 2 * visiblePages.length + 1);
       this._buffer.resize(suggestedCacheSize);
 
       this.renderingQueue.renderHighestPriority(visible);
 
-      var currentId = this._currentPageNumber;
-      var firstPage = visible.first;
+      var currentId = this._getAdjustedPageNumber(visiblePages[0].id);
+      this._setCurrentPageNumber(currentId);
 
-      for (var i = 0, ii = visiblePages.length, stillFullyVisible = false;
-           i < ii; ++i) {
-        var page = visiblePages[i];
-
-        if (page.percent < 100) {
-          break;
+      visiblePages.forEach(function (currentPage) {
+        if (!this.isInPresentationMode ||
+          currentId === this._getAdjustedPageNumber(currentPage.id)) {
+          currentPage.view.div.classList.remove('transparent');
+        } else {
+          currentPage.view.div.classList.add('transparent');
         }
-        if (page.id === currentId) {
-          stillFullyVisible = true;
-          break;
-        }
-      }
+      }.bind(this));
 
-      if (!stillFullyVisible) {
-        currentId = visiblePages[0].id;
-      }
-
-      if (!this.isInPresentationMode) {
-        this._setCurrentPageNumber(currentId);
-      }
-
-      this._updateLocation(firstPage);
+      this._updateLocation(visiblePages[0]);
 
       this.eventBus.dispatch('updateviewarea', {
         source: this,
@@ -721,21 +982,18 @@ var PDFViewer = (function pdfViewer() {
     },
 
     get isHorizontalScrollbarEnabled() {
-      return (this.isInPresentationMode ?
-        false : (this.container.scrollWidth > this.container.clientWidth));
+      return false;
     },
 
     _getVisiblePages: function () {
-      if (!this.isInPresentationMode) {
-        return getVisibleElements(this.container, this._pages, true);
-      } else {
-        // The algorithm in getVisibleElements doesn't work in all browsers and
-        // configurations when presentation mode is active.
-        var visible = [];
-        var currentPage = this._pages[this._currentPageNumber - 1];
-        visible.push({ id: currentPage.id, view: currentPage });
-        return { first: currentPage, last: currentPage, views: visible };
+      var bottomTolerance = this.defaultVerticalTolerance, horizontalTolerance = 10;
+      if (this.currentPageView) {
+        bottomTolerance = Math.max(this.currentPageView.height * this.defaultAdjacentPagesToDraw,
+            bottomTolerance);
+        horizontalTolerance = Math.max(this.currentPageView.width / 15, horizontalTolerance);
       }
+      return getVisibleElements(this.container, this._pages, true,
+          horizontalTolerance, 0, horizontalTolerance, bottomTolerance);
     },
 
     cleanup: function () {
@@ -804,7 +1062,7 @@ var PDFViewer = (function pdfViewer() {
         eventBus: this.eventBus,
         pageIndex: pageIndex,
         viewport: viewport,
-        findController: this.isInPresentationMode ? null : this.findController
+        findController: this.findController
       });
     },
 

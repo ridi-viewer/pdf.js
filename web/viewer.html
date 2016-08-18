@@ -30,7 +30,7 @@ See https://github.com/adobe-type-tools/cmap-resources
 <!--#if GENERIC-->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <!--#endif-->
-    <title>PDF.js viewer</title>
+    <title>Ridibooks PDF viewer</title>
 
 <!--#if FIREFOX || MOZCENTRAL-->
 <!--#include viewer-snippet-firefox-extension.html-->
@@ -56,6 +56,9 @@ See https://github.com/adobe-type-tools/cmap-resources
     <script src="../node_modules/requirejs/require.js"></script>
 <!--#endif-->
 
+    <script src="../ridi_modules/qwebchannel.js"></script>
+    <script src="../ridi_modules/ridi_pdf_viewer.js"></script>
+
 <!--#if (GENERIC && !MINIFIED) -->
 <!--#include viewer-snippet.html-->
 <!--#endif-->
@@ -65,6 +68,7 @@ See https://github.com/adobe-type-tools/cmap-resources
 <!--#endif-->
 
 <!--#if !MINIFIED -->
+    <script src="debugger.js"></script>
     <script src="viewer.js"></script>
 <!--#else-->
 <!--#include viewer-snippet-minified.html-->
@@ -277,6 +281,9 @@ See https://github.com/adobe-type-tools/cmap-resources
 
         <div id="viewerContainer" tabindex="0">
           <div id="viewer" class="pdfViewer"></div>
+          <div id="loadingIconOverlay">
+            <img class="loadingIconImage" src="images/loading-icon.gif" />
+          </div>
         </div>
 
         <div id="errorWrapper" hidden='true'>

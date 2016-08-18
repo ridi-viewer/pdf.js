@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals HTMLCanvasElement */
+/* globals HTMLCanvasElement, RidiPdfViewer */
 
 'use strict';
 
@@ -26,7 +26,7 @@
   }
 }(this, function (exports) {
 //#if !(FIREFOX || MOZCENTRAL)
-  if ('mozPrintCallback' in document.createElement('canvas')) {
+  if ('mozPrintCallback' in document.createElement('canvas') || RidiPdfViewer) {
     return;
   }
 
