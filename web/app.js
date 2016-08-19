@@ -1480,11 +1480,11 @@ function webViewerInitialized() {
   });
 
   appConfig.toolbar.previous.addEventListener('click', function() {
-    PDFViewerApplication.page--;
+    PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
   });
 
   appConfig.toolbar.next.addEventListener('click', function() {
-    PDFViewerApplication.page++;
+    PDFViewerApplication.page += PDFViewerApplication.pdfViewer.pageSwitchUnit;
   });
 
   appConfig.toolbar.zoomIn.addEventListener('click', function() {
