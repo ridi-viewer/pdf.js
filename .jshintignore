@@ -15,3 +15,4 @@ test/features/
 test/resources/
 test/font/*_spec.js
 *~/
+ridi_modules/qwebchannel.js

@@ -104,10 +104,53 @@ var COMMON_WEB_FILES =
       [FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm',
        FIREFOX_CONTENT_DIR + 'PdfjsContentUtils.jsm',
        FIREFOX_CONTENT_DIR + 'PdfjsChromeUtils.jsm'];
-//
-// make generic
+
+// make generic viewer
 // Builds the generic production viewer that should be compatible with most
 // modern HTML5 browsers.
+//
+target.genericviewer = function() {
+  exec('gulp bundle-generic-viewer');
+
+  target.locale();
+
+  cd(ROOT_DIR);
+  echo();
+  echo('### Creating generic viewer');
+
+  rm('-rf', GENERIC_DIR);
+  mkdir('-p', GENERIC_DIR);
+  mkdir('-p', GENERIC_DIR + '/web');
+  mkdir('-p', GENERIC_DIR + '/web/cmaps');
+
+  var defines = builder.merge(DEFINES, {GENERIC: true});
+
+  var setup = {
+    defines: defines,
+    copy: [
+      [BUILD_DIR + 'viewer.js', GENERIC_DIR + '/web'],
+      [COMMON_WEB_FILES, GENERIC_DIR + '/web'],
+      ['LICENSE', GENERIC_DIR],
+      ['external/webL10n/l10n.js', GENERIC_DIR + '/web'],
+      ['web/compatibility.js', GENERIC_DIR + '/web'],
+      ['external/bcmaps/*', GENERIC_DIR + '/web/cmaps/'],
+      ['web/locale', GENERIC_DIR + '/web']
+    ],
+    preprocess: [
+      [COMMON_WEB_FILES_PREPROCESS, GENERIC_DIR + '/web']
+    ],
+    preprocessCSS: [
+      ['generic', 'web/viewer.css',
+       GENERIC_DIR + '/web/viewer.css']
+    ]
+  };
+  builder.build(setup);
+
+  cleanupJSSource(GENERIC_DIR + '/web/viewer.js');
+  cleanupCSSSource(GENERIC_DIR + '/web/viewer.css');
+};
+
+// make generic viewer with pdf.js
 //
 target.generic = function() {
   exec('gulp bundle-generic');
@@ -135,7 +178,6 @@ target.generic = function() {
       ['LICENSE', GENERIC_DIR],
       ['external/webL10n/l10n.js', GENERIC_DIR + '/web'],
       ['web/compatibility.js', GENERIC_DIR + '/web'],
-      ['web/compressed.tracemonkey-pldi-09.pdf', GENERIC_DIR + '/web'],
       ['external/bcmaps/*', GENERIC_DIR + '/web/cmaps/'],
       ['web/locale', GENERIC_DIR + '/web']
     ],
@@ -557,7 +599,6 @@ target.minified = function() {
       [BUILD_TARGETS, MINIFIED_DIR + BUILD_DIR],
       [BUILD_DIR + 'viewer.js', MINIFIED_DIR + '/web'],
       [COMMON_WEB_FILES, MINIFIED_DIR + '/web'],
-      ['web/compressed.tracemonkey-pldi-09.pdf', MINIFIED_DIR + '/web'],
       ['external/bcmaps/*', MINIFIED_DIR + '/web/cmaps'],
       ['web/locale', MINIFIED_DIR + '/web']
     ],
@@ -1242,6 +1283,13 @@ target.server = function () {
 //
 target.lint = function() {
   exit(exec('gulp lint'));
+};
+
+//
+// make lint (only viewer)
+//
+target.lintviewer = function() {
+  exit(exec('gulp lintviewer'));
 };
 
 //

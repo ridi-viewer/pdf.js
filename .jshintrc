@@ -11,7 +11,7 @@
   ],
 
   // Enforcing
-  "maxlen": 80,
+  "maxlen": 100,
   "quotmark": "single",
   "trailing": true,
   "curly": true,

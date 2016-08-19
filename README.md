@@ -6,6 +6,16 @@ PDF.js is community-driven and supported by Mozilla Labs. Our goal is to
 create a general-purpose, web standards-based platform for parsing and
 rendering PDFs.
 
+## Git remotes to add
+
+- mozilla-origin : https://github.com/mozilla/pdf.js.git
+- origin : git@gitlab.ridi.io:viewer-app/pdf.js.git
+
+Please take care of differences between RIDI viewer and the original PDF.js viewer, such as
+- Supporting two page display mode.
+- Using larger PDFPageView cache.
+- Using the presentation mode with very different behaviors.
+
 ## Contributing
 
 PDF.js is an open source project and always looking for more contributors. To
@@ -21,23 +31,11 @@ get involved checkout:
 For further questions or guidance feel free to stop by #pdfjs on
 irc.mozilla.org.
 
-## Getting Started
-
 ### Online demo
 
 + http://mozilla.github.io/pdf.js/web/viewer.html
 
 ### Browser Extensions
-
-#### Firefox (and Seamonkey)
-
-PDF.js is built into version 19+ of Firefox, however one extension is still available:
-
-+ [Development Version](http://mozilla.github.io/pdf.js/extensions/firefox/pdf.js.xpi) - This extension is mainly intended for developers/testers, and it is updated every time new code is merged into the PDF.js codebase. It should be quite stable, but might break from time to time.
-
-  + Please note that the extension is *not* guaranteed to be compatible with Firefox versions that are *older* than the current ESR version, see the [Release Calendar](https://wiki.mozilla.org/RapidRelease/Calendar#Past_branch_dates).
-
-  + The extension should also work in Seamonkey, provided that it is based on a Firefox version as above (see [Which version of Firefox does SeaMonkey 2.x correspond with?](https://wiki.mozilla.org/SeaMonkey/FAQ#General)), but we do *not* guarantee compatibility.
 
 #### Chrome
 
@@ -47,81 +45,29 @@ PDF.js is built into version 19+ of Firefox, however one extension is still avai
 Chrome, go to `Tools > Extension` and load the (unpackaged) extension from the
 directory `build/chromium`.
 
-## Getting the Code
+## Building PDF.js (or only PDF.js viewer)
 
-To get a local copy of the current code, clone it using git:
+First, install Node.js via the [official package](http://nodejs.org) or via [nvm](https://github.com/creationix/nvm).
 
-    $ git clone git://github.com/mozilla/pdf.js.git
-    $ cd pdf.js
+Next,
+> $ npm install -g gulp-cli
 
-Next, install Node.js via the [official package](http://nodejs.org) or via
-[nvm](https://github.com/creationix/nvm). You need to install the gulp package
-globally (see also [gulp's getting started](https://github.com/gulpjs/gulp/blob/master/docs/getting-started.md#getting-started)):
+> $ npm install
 
-    $ npm install -g gulp-cli
+> $ ./get_viewer.sh
 
-If everything worked out, install all dependencies for PDF.js:
+The commands above will generate the generic viewer without building the entire library.
+Note that files for RIDI viewer should be located at the ridi_modules directory. 
 
-    $ npm install
+In order to bundle all `src/` files into two productions scripts and build the generic viewer, issue:
 
-Finally you need to start a local web server as some browsers do not allow opening
-PDF files using a file:// URL. Run
-
-    $ gulp server
-
-and then you can open
-
-+ http://localhost:8888/web/viewer.html
-
-It is also possible to view all test PDF files on the right side by opening
-
-+ http://localhost:8888/test/pdfs/?frame
-
-## Building PDF.js
-
-In order to bundle all `src/` files into two productions scripts and build the generic
-viewer, issue:
-
-    $ gulp generic
+> $ ./get_viewer.sh -f
 
 This will generate `pdf.js` and `pdf.worker.js` in the `build/generic/build/` directory.
 Both scripts are needed but only `pdf.js` needs to be included since `pdf.worker.js` will
 be loaded by `pdf.js`. If you want to support more browsers than Firefox you'll also need
 to include `compatibility.js` from `build/generic/web/`. The PDF.js files are large and
 should be minified for production.
-
-## Using PDF.js in a web application
-
-To use PDF.js in a web application you can choose to use a pre-built version of the library
-or to build it from source. We supply pre-built versions for usage with NPM and Bower under
-the `pdfjs-dist` name. For more information and examples please refer to the
-[wiki page](https://github.com/mozilla/pdf.js/wiki/Setup-pdf.js-in-a-website) on this subject.
-
-## Learning
-
-You can play with the PDF.js API directly from your browser through the live
-demos below:
-
-+ [Hello world](http://mozilla.github.io/pdf.js/examples/learning/helloworld.html)
-+ [Simple reader with prev/next page controls](http://mozilla.github.io/pdf.js/examples/learning/prevnext.html)
-
-The repo contains a hello world example that you can run locally:
-
-+ [examples/helloworld/](https://github.com/mozilla/pdf.js/blob/master/examples/helloworld/)
-
-For an introduction to the PDF.js code, check out the presentation by our
-contributor Julian Viereck:
-
-+ http://www.youtube.com/watch?v=Iv15UY-4Fg8
-
-You can read more about PDF.js here:
-
-+ http://andreasgal.com/2011/06/15/pdf-js/
-+ http://blog.mozilla.com/cjones/2011/06/15/overview-of-pdf-js-guts/
-
-Even more learning resources can be found at:
-
-+ https://github.com/mozilla/pdf.js/wiki/Additional-Learning-Resources
 
 ## Questions
 

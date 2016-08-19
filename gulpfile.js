@@ -403,6 +403,12 @@ gulp.task('bundle-generic', ['buildnumber'], function () {
     .pipe(gulp.dest(BUILD_DIR));
 });
 
+gulp.task('bundle-generic-viewer', ['buildnumber'], function () {
+  var defines = builder.merge(DEFINES, {GENERIC: true});
+  return streamqueue({ objectMode: true }, createWebBundle(defines))
+    .pipe(gulp.dest(BUILD_DIR));
+});
+
 gulp.task('bundle-minified', ['buildnumber'], function () {
   var defines = builder.merge(DEFINES, {MINIFIED: true, GENERIC: true});
   return streamqueue({ objectMode: true },
@@ -527,6 +533,42 @@ gulp.task('lint', function (done) {
   });
 });
 
+gulp.task('lintviewer', function (done) {
+  console.log();
+  console.log('### Linting JS files');
+
+  // Lint the Firefox specific *.jsm files.
+  var options = ['node_modules/jshint/bin/jshint', '--extra-ext', '.jsm', '.'];
+  var jshintProcess = spawn('node', options, {stdio: 'inherit'});
+  jshintProcess.on('close', function (code) {
+    if (code !== 0) {
+      done(new Error('jshint failed.'));
+      return;
+    }
+
+    console.log();
+    console.log('### Checking UMD dependencies');
+    var umd = require('./external/umdutils/verifier.js');
+    if (!umd.validateFiles({'pdfjs-web': './web'})) {
+      done(new Error('UMD check failed.'));
+      return;
+    }
+
+    console.log();
+    console.log('### Checking supplemental files');
+
+    if (!checkChromePreferencesFile(
+          'extensions/chromium/preferences_schema.json',
+          'web/default_preferences.json')) {
+      done(new Error('chromium/preferences_schema is not in sync.'));
+      return;
+    }
+
+    console.log('files checked, no errors found');
+    done();
+  });
+});
+
 gulp.task('server', function (done) {
   console.log();
   console.log('### Starting local server');
@@ -557,6 +599,7 @@ gulp.task('makefile', function () {
 });
 
 gulp.task('importl10n', function(done) {
+  console.log('****** Running this task may break translations! ******');
   var locales = require('./external/importL10n/locales.js');
 
   console.log();
