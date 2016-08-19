@@ -1,8 +1,6 @@
 {
   "showPreviousViewOnLoad": false,
-  "defaultZoomValue": "", // DO NOT SET THIS VALUE!
-  // Setting the above value will make storedHash generated in PDFViewerApplication.load,
-  // resulting in unexpected page jump (to page 1) after initialization.
+  "defaultZoomValue": "",
   "sidebarViewOnLoad": 0,
   "enableHandToolOnLoad": false,
   "enableWebGL": false,

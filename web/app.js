@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFBug, Stats, RidiPdfViewer */
+/* globals PDFBug, Stats, DEFAULT_URL, RidiPdfViewer */
 
 'use strict';
 
@@ -1519,7 +1519,6 @@ function webViewerInitialized() {
   appConfig.toolbar.presentationModeButton.addEventListener('click',
       function (e) {
     PDFViewerApplication.eventBus.dispatch('presentationmode');
-
   });
 
   appConfig.toolbar.openFile.addEventListener('click', function (e) {

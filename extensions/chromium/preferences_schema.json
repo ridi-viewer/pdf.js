@@ -5,7 +5,7 @@
       "title": "Show previous position of PDF upon load",
       "description": "Whether to view PDF documents in the last page and position upon opening the viewer.",
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "defaultZoomValue": {
       "title": "Default zoom level",

@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+'use strict';
+
 /*
  NOTE: This file is created as a helper to assist with JSDoc html files.
        It is not for use in the executable code.
