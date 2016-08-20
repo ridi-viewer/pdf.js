@@ -1533,12 +1533,13 @@ function webViewerInitialized() {
     PDFViewerApplication.eventBus.dispatch('download');
   });
 
-  Promise.all(waitForBeforeOpening).then(function () {
-    webViewerOpenFileViaURL(file);
-  }).catch(function (reason) {
-    PDFViewerApplication.error(mozL10n.get('loading_error', null,
-      'An error occurred while opening.'), reason);
-  });
+  //  Note : disabled opening file by URL.
+  //  Promise.all(waitForBeforeOpening).then(function () {
+  //    webViewerOpenFileViaURL(file);
+  //  }).catch(function (reason) {
+  //    PDFViewerApplication.error(mozL10n.get('loading_error', null,
+  //      'An error occurred while opening.'), reason);
+  //  });
 }
 
 //#if GENERIC
@@ -2290,27 +2291,6 @@ window.addEventListener('keydown', function keydown(evt) {
   if (cmd === 1 || cmd === 8 || cmd === 5 || cmd === 12) {
     // either CTRL or META key with optional SHIFT.
     switch (evt.keyCode) {
-      case 70: // f
-        if (!PDFViewerApplication.supportsIntegratedFind) {
-          PDFViewerApplication.findBar.open();
-          handled = true;
-        }
-        break;
-      case 71: // g
-        if (!PDFViewerApplication.supportsIntegratedFind) {
-          var findState = PDFViewerApplication.findController.state;
-          if (findState) {
-            PDFViewerApplication.findController.executeCommand('findagain', {
-              query: findState.query,
-              phraseSearch: findState.phraseSearch,
-              caseSensitive: findState.caseSensitive,
-              highlightAll: findState.highlightAll,
-              findPrevious: cmd === 5 || cmd === 12
-            });
-          }
-          handled = true;
-        }
-        break;
       case 61: // FF/Mac '='
       case 107: // FF '+' and '='
       case 187: // Chrome '+'

@@ -797,7 +797,7 @@ var PDFViewer = (function pdfViewer() {
         this._setScale(this._currentScaleValue, true);
       }
 
-      scrollIntoView(this.currentPageView.div);
+      scrollIntoView(this.currentLargerHeightPageView.div);
     },
 
     /**
