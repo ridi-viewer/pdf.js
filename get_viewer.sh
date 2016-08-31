@@ -15,5 +15,10 @@ rsync -avh --delete build/generic/* ../res/pdf-viewer/ &&
 rsync -avh --delete ridi_modules ../res/pdf-viewer/ &&
 cd ../res &&
 ./generate-qrc.sh &&
-echo "NOTE : To build all PDF.js module then give -f option to this script." &&
+(if [[ $1 == "-f" ]]
+then
+  echo "NOTE : All files including build script are gone through lint."
+else
+  echo "NOTE : To build and lint all PDF.js module then give -f option to this script."
+fi) &&
 echo "NOTE : Qt RCC may not notice the changes sometimes."

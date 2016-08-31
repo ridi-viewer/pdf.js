@@ -433,6 +433,41 @@ var PDFViewerApplication = {
   get page() {
     return this.pdfViewer.currentPageNumber;
   },
+  
+  get mouseWheelUnit() {
+    return 120;
+  },
+
+  goNext: function pdfViewGoNext(forcePageSwitchInScrollMode) {
+    forcePageSwitchInScrollMode = (!!forcePageSwitchInScrollMode) || false;
+    var pdfViewer = this.pdfViewer;
+
+    if (pdfViewer.currentPageNumber >= pdfViewer.pagesCount - 1 &&
+        checkFirstAndLastPageOnScroll(true)) {
+      return;
+    }
+
+    if (pdfViewer.isInPresentationMode || forcePageSwitchInScrollMode) {
+      this.page += pdfViewer.pageSwitchUnit;
+    } else {
+      pdfViewer.container.scrollTop += this.mouseWheelUnit;
+    }
+  },
+  
+  goPrev: function pdfViewGoPrev(forcePageSwitchInScrollMode) {
+    forcePageSwitchInScrollMode = (!!forcePageSwitchInScrollMode) || false;
+    var pdfViewer = this.pdfViewer;
+
+    if (pdfViewer.currentPageNumber <= 2 && checkFirstAndLastPageOnScroll(false)) {
+      return;
+    }
+
+    if (pdfViewer.isInPresentationMode || forcePageSwitchInScrollMode) {
+      this.page -= pdfViewer.pageSwitchUnit;
+    } else {
+      pdfViewer.container.scrollTop -= this.mouseWheelUnit;
+    }
+  },
 
   get supportsPrinting() {
     return pdfjsLib.shadow(this, 'supportsPrinting', false);
@@ -1165,11 +1200,12 @@ var PDFViewerApplication = {
     this.pdfViewer.scrollPageIntoView(pageNumber);
   },
 
-  togglePresentationMode: function pdfViewTogglePresentationMode(activate) {
+  togglePresentationMode: function pdfViewTogglePresentationMode(activate,
+                              preserveScaleWhenActivating) {
     if (!this.pdfPresentationMode) {
       return;
     }
-    this.pdfPresentationMode.toggle(activate);
+    this.pdfPresentationMode.toggle(activate, preserveScaleWhenActivating);
   },
 
   /**
@@ -2076,7 +2112,7 @@ var scrollCheckDisabled = false;
 var scrollCheckMinInterval = 100;
 function checkFirstAndLastPageOnScroll(scrollUp) {
   if (scrollCheckDisabled) {
-    return;
+    return true;
   }
 
   var pdfViewer = PDFViewerApplication.pdfViewer;
@@ -2269,23 +2305,6 @@ window.addEventListener('keydown', function keydown(evt) {
 
   var pdfViewer = PDFViewerApplication.pdfViewer;
 
-  var mouseWheelUnit = 120;
-  var goNext = function() {
-    if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
-      PDFViewerApplication.page += PDFViewerApplication.pdfViewer.pageSwitchUnit;
-    } else {
-      PDFViewerApplication.pdfViewer.container.scrollTop += mouseWheelUnit;
-    }
-  };
-  
-  var goPrev = function() {
-    if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
-      PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
-    } else {
-      PDFViewerApplication.pdfViewer.container.scrollTop -= mouseWheelUnit;
-    }
-  };
-
   // First, handle the key bindings that are independent whether an input
   // control is selected or not.
   if (cmd === 1 || cmd === 8 || cmd === 5 || cmd === 12) {
@@ -2336,16 +2355,15 @@ window.addEventListener('keydown', function keydown(evt) {
   var ensureViewerFocused = false;
 
   if (cmd === 0) { // no control key pressed at all.
-    // Note : first / last page check for keydown events is done at ReaderWebEngineWindow.
     switch (evt.keyCode) {
       case 33: // pg up
       case 8: // backspace
-        PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
+        PDFViewerApplication.goPrev(true);
         handled = true;
         break;
       case 38: // up arrow
       case 37: // left arrow
-        goPrev();
+        PDFViewerApplication.goPrev();
         handled = true;
         break;
       case 27: // esc key
@@ -2361,12 +2379,12 @@ window.addEventListener('keydown', function keydown(evt) {
         break;
       case 34: // pg down
       case 32: // spacebar
-        PDFViewerApplication.page += PDFViewerApplication.pdfViewer.pageSwitchUnit;
+        PDFViewerApplication.goNext(true);
         handled = true;
         break;
       case 40: // down arrow
       case 39: // right arrow
-        goNext();
+        PDFViewerApplication.goNext();
         handled = true;
         break;
       case 36: // home
@@ -2390,7 +2408,7 @@ window.addEventListener('keydown', function keydown(evt) {
   if (cmd === 4) { // shift-key
     switch (evt.keyCode) {
       case 32: // spacebar
-        PDFViewerApplication.page -= PDFViewerApplication.pdfViewer.pageSwitchUnit;
+        PDFViewerApplication.goPrev(true);
         handled = true;
         break;
     }

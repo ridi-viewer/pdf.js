@@ -86,7 +86,7 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
   }
 
   PDFPresentationMode.prototype = {
-    activate: function PDFPresentationMode_activate() {
+    activate: function PDFPresentationMode_activate(preserveScaleWhenActivating) {
       if (this.switchInProgress || !this.viewer.hasChildNodes()) {
         return;
       }
@@ -98,7 +98,7 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
         page: this.pdfViewer.currentPageNumber,
       };
 
-      this._enter();
+      this._enter(preserveScaleWhenActivating);
     },
 
     deactivate: function PDFPresentationMode_deactivate() {
@@ -115,14 +115,14 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
     /**
      * @param {boolean} activate - (optional) To activate presentation mode or not.
      */
-    toggle: function PDFPresentationMode_toggle(activate) {
+    toggle: function PDFPresentationMode_toggle(activate, preserveScaleWhenActivating) {
       activate = (activate === undefined) ? (!this.active) : (!!activate);
       if (this.active === activate) {
         return;
       }
 
       if (activate) {
-        this.activate();
+        this.activate(preserveScaleWhenActivating);
       } else {
         this.deactivate();
       }
@@ -219,7 +219,19 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
     /**
      * @private
      */
-    _enter: function PDFPresentationMode_enter() {
+    _enter: function PDFPresentationMode_enter(preserveScaleWhenActivating) {
+      var deltaY = 0;
+      var viewerContainer;
+      if (preserveScaleWhenActivating) {
+        var pageView = this.pdfViewer.getPageView(this.args.page - 1);
+        viewerContainer = this.pdfViewer.container;
+        if (pageView) {
+          var pageViewRect = pageView.div.getBoundingClientRect();
+          var viewerContainerRect = viewerContainer.getBoundingClientRect();
+          deltaY = viewerContainerRect.top - pageViewRect.top;
+        }
+      }
+
       this.active = true;
       this._resetSwitchInProgress();
       this._notifyStateChange();
@@ -229,8 +241,11 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
       // Presentation Mode
       setTimeout(function enterPresentationModeTimeout() {
         this.pdfViewer.currentPageNumber = this.args.page;
-        this.pdfViewer.currentScaleValue = 'page-fit';
-        // Adjusting scrollTop like in the _exit is meaningless, due to the above scale change.
+        if (preserveScaleWhenActivating) {
+          viewerContainer.scrollTop += deltaY;
+        } else {
+          this.pdfViewer.currentScaleValue = 'page-fit';
+        }
       }.bind(this), 0);
 
       this._addWindowListeners();

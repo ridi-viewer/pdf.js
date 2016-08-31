@@ -331,13 +331,6 @@ var PDFViewer = (function pdfViewer() {
      */
     _setCurrentPageNumber:
         function PDFViewer_setCurrentPageNumber(val, resetCurrentPageView) {
-      if (this._currentPageNumber === val) {
-        if (resetCurrentPageView) {
-          this._resetCurrentPageView();
-        }
-        return;
-      }
-      
       val = this._getAdjustedPageNumber(val);
       var arg = {
         source: this,
@@ -990,7 +983,7 @@ var PDFViewer = (function pdfViewer() {
       if (this.currentPageView) {
         bottomTolerance = Math.max(this.currentPageView.height * this.defaultAdjacentPagesToDraw,
             bottomTolerance);
-        horizontalTolerance = Math.max(this.currentPageView.width / 15, horizontalTolerance);
+        horizontalTolerance = Math.max(this.currentPageView.width * 2, horizontalTolerance);
       }
       return getVisibleElements(this.container, this._pages, true,
           horizontalTolerance, 0, horizontalTolerance, bottomTolerance);

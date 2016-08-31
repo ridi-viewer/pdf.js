@@ -69,7 +69,7 @@ RidiPdfViewer.prototype.optimizePageCacheForWindows = function() {
 
 RidiPdfViewer.prototype.setTocFromPdfOutline = function(outline) {
   if (!outline) {
-    this.onError('Outline is null (the book may not have any toc item.)');
+    console.warn('Outline is null (the book may not have any toc item.)');
     return;
   }
 
