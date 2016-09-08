@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals pdfjsFilePath, pdfjsVersion, pdfjsBuild */
+/* globals pdfjsFilePath, pdfjsVersion, pdfjsBuild, RidiPdfViewer */
 
 'use strict';
 
@@ -1609,6 +1609,87 @@ var WorkerTransport = (function WorkerTransportClosure() {
         }
         _UnsupportedManager.notify(featureId);
       }, this);
+      
+      messageHandler.on('JpxDecode', function(data) {
+        if (this.destroyed) {
+          return Promise.reject('Worker was terminated');
+        }
+
+        var imageId = data[0];
+        var imageUrl = data[1];
+
+        return new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest();
+          xhr.open('GET', imageUrl, true);
+          xhr.responseType = 'blob';
+  
+          var failure = function(evt) { reject(evt); };
+          xhr.addEventListener('error', failure);
+          xhr.addEventListener('abort', failure);
+          
+          xhr.onload = function(e) {
+            if (this.status !== 200) {
+              reject(e);
+            }
+
+            var reader = new FileReader();
+            reader.onload = function(evt) {
+              function uint8ToBase64(u8Arr) {
+                var chunkSize = 0x7000;
+                var index = 0;
+                var length = u8Arr.length;
+                var result = '';
+                var slice;
+                while (index < length) {
+                  slice = u8Arr.subarray(index, Math.min(index + chunkSize, length)); 
+                  result += String.fromCharCode.apply(null, slice);
+                  index += chunkSize;
+                }
+                return btoa(result);
+              }
+
+              var imageData = new Uint8Array(evt.target.result);
+              var imageDataString = uint8ToBase64(imageData);
+              var nativeViewer = RidiPdfViewer.nativeViewer;
+
+              var decodeCallback = function(decodedImageId, decodedImageDataString,
+                  numComps, bitsPerComponent) {
+                if (imageId !== decodedImageId) {
+                  return;
+                }
+
+                decodedImageDataString = atob(decodedImageDataString);
+                var decodedImageDataStringLength = decodedImageDataString.length;
+                if (decodedImageDataStringLength === 0) {
+                  console.warn('Native JPX (JPEG2000) decoding failed. Falling back to jpx.js..');
+                  resolve({ success: false, data: imageData });
+                  return;
+                }
+
+                var decodedImageData = new Uint8Array(
+                    new ArrayBuffer(decodedImageDataStringLength));
+                for (var i = 0; i < decodedImageDataStringLength; i++) {
+                  decodedImageData[i] = decodedImageDataString.charCodeAt(i);
+                }
+                
+                nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
+                resolve({
+                  success: true,
+                  data: decodedImageData,
+                  numComps: numComps,
+                  bitsPerComponent: bitsPerComponent
+                });
+              };
+
+              nativeViewer.jpxImageDecoded.connect(decodeCallback);
+              nativeViewer.jsJpxImageDecodeRequested(imageId, imageDataString);
+            };
+            reader.onerror = failure;
+            reader.readAsArrayBuffer(xhr.response);
+          };
+          xhr.send(null);
+        });
+      }, this);
 
       messageHandler.on('JpegDecode', function(data) {
         if (this.destroyed) {
@@ -1641,6 +1722,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 buf[j] = data[i];
                 buf[j + 1] = data[i + 1];
                 buf[j + 2] = data[i + 2];
+                // Ignores alpha channel from the canvas.
               }
             } else if (components === 1) {
               for (i = 0, j = 0; i < rgbaLength; i += 4, j++) {

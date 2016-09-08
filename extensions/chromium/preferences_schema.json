@@ -70,7 +70,7 @@
       "title": "Disable text selection layer",
       "description": "Whether to disable the text selection layer.",
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "useOnlyCssZoom": {
       "type": "boolean",

@@ -1033,6 +1033,10 @@ var JpxStream = (function JpxStreamClosure() {
     this.bufferLength = this.buffer.length;
     this.eof = true;
   };
+  
+  JpxStream.prototype.getIR = function JpxStream_getIR() {
+    return createObjectURL(this.bytes, 'image/jpx');
+  };
 
   return JpxStream;
 })();

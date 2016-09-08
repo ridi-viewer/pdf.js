@@ -72,6 +72,7 @@ var isRef = corePrimitives.isRef;
 var isStream = corePrimitives.isStream;
 var DecodeStream = coreStream.DecodeStream;
 var JpegStream = coreStream.JpegStream;
+var JpxStream = coreStream.JpxStream;
 var Stream = coreStream.Stream;
 var Lexer = coreParser.Lexer;
 var Parser = coreParser.Parser;
@@ -123,29 +124,55 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
   }
   NativeImageDecoder.prototype = {
     canDecode: function (image) {
-      return image instanceof JpegStream &&
-             NativeImageDecoder.isDecodable(image, this.xref, this.resources);
+      return image instanceof JpxStream || (image instanceof JpegStream &&
+             NativeImageDecoder.isDecodable(image, this.xref, this.resources));
     },
     decode: function (image) {
-      // For natively supported JPEGs send them to the main thread for decoding.
+      // For natively supported formats, send them to the main thread for decoding.
       var dict = image.dict;
-      var colorSpace = dict.get('ColorSpace', 'CS');
-      colorSpace = ColorSpace.parse(colorSpace, this.xref, this.resources);
-      var numComps = colorSpace.numComps;
-      var decodePromise = this.handler.sendWithPromise('JpegDecode',
-        [image.getIR(this.forceDataSchema), numComps]);
-      return decodePromise.then(function (message) {
-        var data = message.data;
-        return new Stream(data, 0, data.length, image.dict);
-      });
+      var numComps;
+      var decodePromise;
+
+      if (image instanceof JpxStream) {
+        decodePromise = this.handler.sendWithPromise('JpxDecode', [dict.objId, image.getIR()]);
+
+        return decodePromise.then(function (message) {
+          var data = message.data;
+          if (message.success) {
+            dict.remove('Filter');
+            dict.set('NumComps', message.numComps);
+            dict.set('BitsPerComponent', message.bitsPerComponent);
+            return new Stream(data, 0, data.length, dict);
+          } else {
+            return new JpxStream(new Stream(data, 0, data.length, dict), data.length, dict);
+          }
+        });
+      } else {
+        // JPEGs
+        var colorSpace = dict.get('ColorSpace', 'CS');
+        colorSpace = ColorSpace.parse(colorSpace, this.xref, this.resources);
+        numComps = colorSpace.numComps;
+
+        decodePromise = this.handler.sendWithPromise('JpegDecode',
+            [image.getIR(this.forceDataSchema), numComps]);
+
+        return decodePromise.then(function (message) {
+          var data = message.data;
+          return new Stream(data, 0, data.length, dict);
+        });
+      }
     }
   };
   /**
-   * Checks if the image can be decoded and displayed by the browser without any
-   * further processing such as color space conversions.
+   * Checks if the image can be decoded and displayed natively
+   * without any further processing such as color space conversions.
    */
   NativeImageDecoder.isSupported =
       function NativeImageDecoder_isSupported(image, xref, res) {
+    if (image instanceof JpxStream) {
+      return true;
+    }
+
     var cs = ColorSpace.parse(image.dict.get('ColorSpace', 'CS'), xref, res);
     return (cs.name === 'DeviceGray' || cs.name === 'DeviceRGB') &&
            cs.isDefaultDecode(image.dict.getArray('Decode', 'D'));
@@ -398,10 +425,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         return;
       }
 
-      // Creates native image decoder only if a JPEG image or mask is present.
+      // Creates native image decoder only if a JPX / JPEG image or mask is present.
       var nativeImageDecoder = null;
-      if (image instanceof JpegStream || mask instanceof JpegStream ||
-          softMask instanceof JpegStream) {
+      if (image instanceof JpegStream || image instanceof JpxStream ||
+          mask instanceof JpegStream || softMask instanceof JpegStream) {
         nativeImageDecoder = new NativeImageDecoder(self.xref, resources,
           self.handler, self.options.forceDataSchema);
       }

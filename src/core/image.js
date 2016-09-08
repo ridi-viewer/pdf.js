@@ -117,6 +117,9 @@ var PDFImage = (function PDFImageClosure() {
         image.numComps = 1;
       }
     }
+    if (dict.has('NumComps')) {
+      image.numComps = dict.get('NumComps');
+    }
     // TODO cache rendered images?
 
     this.width = dict.get('Width', 'W');

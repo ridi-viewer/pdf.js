@@ -28,7 +28,7 @@ var RidiPdfViewer = function() {
         self.bookData = undefined;
         PDFJS.disableHistory = true;
         return PDFViewerApplication.open(bookArray, requestedScale);
-      }, self.onError);
+      }, function (e) { return Promise.reject(e); });
     });
 
     self.nativeViewer.jsViewerCreated();

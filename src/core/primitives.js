@@ -81,6 +81,13 @@ var Dict = (function DictClosure() {
       this.xref = newXref;
     },
 
+    remove: function Dict_remove(key) {
+      if (key in this.map) {
+        return (delete this.map[key]);
+      }
+      return false;
+    },
+
     // automatically dereferences Ref objects
     get: function Dict_get(key1, key2, key3) {
       var value;
