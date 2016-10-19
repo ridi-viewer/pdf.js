@@ -72,6 +72,14 @@ should be minified for production.
 
 ## Working with git-subtree
 
+----------
+
+### **IMPORTANT!!**
+
+Even the method below may not work. Then get the changes from the root repository **manually**. (By copying files, rsync, and so on.)
+
+--------
+
 Generally this repository should be added as a submoudle or subtree to the other repository (referred to as 'the main repository' below).
 
 However (at this point of time) using *'git subtree push'* will **RUIN** this repository with all history of the main repository.
