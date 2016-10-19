@@ -1,4 +1,5 @@
 *~
+*.orig
 local.mk
 build/
 tags
