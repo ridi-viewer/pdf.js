@@ -9,12 +9,13 @@ rendering PDFs.
 ## Git remotes to add
 
 - mozilla-origin : https://github.com/mozilla/pdf.js.git
-- origin : git@gitlab.ridi.io:viewer-app/pdf.js.git
+- origin : git@github.com:ridibooks/pdf.js.git 
 
 Please take care of differences between RIDI viewer and the original PDF.js viewer, such as
 - Supporting two page display mode.
 - Using larger PDFPageView cache.
 - Using the presentation mode with **VERY** different behaviors.
+- Please refer to the [wiki page](https://ridicorp.atlassian.net/wiki/pages/viewpage.action?pageId=77856777) for details.
 
 ## Contributing
 
@@ -93,7 +94,7 @@ Then,
 
 Then checkout back to the branch you were working at.
 
-*Note : This process is time-consuming, so you might want to do this only upon each release (not on every commit you make at the main repository).
+*Note : This process is time-consuming, so you might want to do this only upon each merger on the develop branch (not on every commit you make at the main repository).
 
 ## Questions
 

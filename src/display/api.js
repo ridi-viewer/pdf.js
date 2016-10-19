@@ -1662,6 +1662,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 var decodedImageDataStringLength = decodedImageDataString.length;
                 if (decodedImageDataStringLength === 0) {
                   console.warn('Native JPX (JPEG2000) decoding failed. Falling back to jpx.js..');
+                  nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
                   resolve({ success: false, data: imageData });
                   return;
                 }

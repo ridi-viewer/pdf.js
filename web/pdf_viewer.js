@@ -64,7 +64,7 @@ var PresentationModeState = {
 };
 
 /**
- * Qt 5.7.0 on Mac seems to leak memory while drawing images, (sometimes uses 4GB+)
+ * QtWebEngine (5.7.0) on Mac seems to leak memory during DOM operations, (sometimes uses 4GB+)
  * so it's better to have a very large cache (10 MB * 180 pages : approximately up to 1.8GB)
  * to avoid drawing tasks.
  *

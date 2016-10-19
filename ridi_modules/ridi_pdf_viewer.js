@@ -5,32 +5,7 @@
 var RidiPdfViewer = function() {
   var self = this;
   new QWebChannel(qt.webChannelTransport, function(channel) {
-    self.bookData = [];
     self.nativeViewer = channel.objects.nativeViewer;
-
-    self.nativeViewer.bookDataRead.connect(function(partialBookData) {
-      // partialBookData is a Base64 encoded book data chunk.
-      self.bookData.push(atob(partialBookData));
-    });
-
-    self.nativeViewer.loadBookRequested.connect(function(requestedScale) {
-      // Abort all tasks if some document was being loaded.
-      PDFViewerApplication.close()
-      .then(function() {
-        var bookDataString = self.bookData.join('');
-        var bookDataStringLength = bookDataString.length;
-
-        var bookArray = new Uint8Array(new ArrayBuffer(bookDataStringLength));
-        for (var i = 0; i < bookDataStringLength; i++) {
-          bookArray[i] = bookDataString.charCodeAt(i);
-        }
-
-        self.bookData = undefined;
-        PDFJS.disableHistory = true;
-        return PDFViewerApplication.open(bookArray, requestedScale);
-      }, function (e) { return Promise.reject(e); });
-    });
-
     self.nativeViewer.jsViewerCreated();
   });
 };
@@ -43,6 +18,11 @@ RidiPdfViewer.prototype.showPopup = function(title, text) {
 RidiPdfViewer.prototype.showWarningPopup = function(title, text) {
   this.nativeViewer.showWarningPopup(title ? title.toString() : '',
       text ? text.toString() : '');
+};
+
+RidiPdfViewer.prototype.showErrorPopup = function(title, text, closeReaderWindow) {
+  this.nativeViewer.showErrorPopup(title ? title.toString() : '',
+      text ? text.toString() : '', closeReaderWindow);
 };
 
 RidiPdfViewer.prototype.onError = function(err) {

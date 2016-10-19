@@ -674,8 +674,9 @@ var PDFViewerApplication = {
       },
       function getDocumentError(exception) {
         var message = exception && exception.message;
-        var loadingErrorMessage = mozL10n.get('loading_error', null,
-          'An error occurred while loading the PDF.');
+        var loadingErrorTitle = mozL10n.get('loading_error', null,
+          'An error occurred while loading the PDF.'), loadingErrorMessage;
+        var isUnknownError = false;
 
         if (exception instanceof pdfjsLib.InvalidPDFException) {
           // change error message also for other builds
@@ -688,12 +689,17 @@ var PDFViewerApplication = {
         } else if (exception instanceof pdfjsLib.UnexpectedResponseException) {
           loadingErrorMessage = mozL10n.get('unexpected_response_error', null,
                                             'Unexpected server response.');
+        } else {
+          loadingErrorMessage = loadingErrorTitle;
+          isUnknownError = true;
         }
 
         var moreInfo = {
           message: message
         };
         self.error(loadingErrorMessage, moreInfo);
+        RidiPdfViewer.showErrorPopup(loadingErrorTitle,
+            isUnknownError ? '' : loadingErrorMessage, true);
 
         throw new Error(loadingErrorMessage);
       }
@@ -965,7 +971,7 @@ var PDFViewerApplication = {
       pdfDocument.getOutline().then(function(outline) {
         RidiPdfViewer.setTocFromPdfOutline(outline);
         self.pdfOutlineViewer.render({ outline: outline });
-      }, RidiPdfViewer.onError);
+      }, self.error);
       pdfDocument.getAttachments().then(function(attachments) {
         self.pdfAttachmentViewer.render({ attachments: attachments });
       });
@@ -2128,7 +2134,7 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
   if (!scrollUp && PDFViewerApplication.page <= 2) {
     var firstPageView = pdfViewer.getPageView(0);
     if (!firstPageView) {
-      RidiPdfViewer.onError('Failed to get the first page view for checking scroll range.');
+      PDFViewerApplication.error('Failed to get the first page view for checking scroll range.');
     } else {
       var firstPageRect = firstPageView.div.getBoundingClientRect();
       containerRect = viewerContainer.getBoundingClientRect();
@@ -2153,7 +2159,7 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
   } else if (scrollUp && PDFViewerApplication.page >= PDFViewerApplication.pagesCount - 1) {
     var lastPageView = pdfViewer.getPageView(PDFViewerApplication.pagesCount - 1);
     if (!lastPageView) {
-      RidiPdfViewer.onError('Failed to get the last page view for checking scroll range.');
+      PDFViewerApplication.error('Failed to get the last page view for checking scroll range.');
     } else {
       var lastPageRect = lastPageView.div.getBoundingClientRect();
       containerRect = viewerContainer.getBoundingClientRect();
@@ -2361,8 +2367,17 @@ window.addEventListener('keydown', function keydown(evt) {
         PDFViewerApplication.goPrev(true);
         handled = true;
         break;
-      case 38: // up arrow
       case 37: // left arrow
+        if (!PDFViewerApplication.pdfViewer.isInPresentationMode ||
+            PDFViewerApplication.currentScaleValue !== 'page-fit') {
+          PDFViewerApplication.pdfViewer.container.scrollLeft -=
+            PDFViewerApplication.mouseWheelUnit / 2;
+        } else {
+          PDFViewerApplication.goPrev();
+        }
+        handled = true;
+        break;
+      case 38: // up arrow
         PDFViewerApplication.goPrev();
         handled = true;
         break;
@@ -2382,8 +2397,17 @@ window.addEventListener('keydown', function keydown(evt) {
         PDFViewerApplication.goNext(true);
         handled = true;
         break;
-      case 40: // down arrow
       case 39: // right arrow
+        if (!PDFViewerApplication.pdfViewer.isInPresentationMode ||
+            PDFViewerApplication.currentScaleValue !== 'page-fit') {
+          PDFViewerApplication.pdfViewer.container.scrollLeft +=
+            PDFViewerApplication.mouseWheelUnit / 2;
+        } else {
+          PDFViewerApplication.goNext();
+        }
+        handled = true;
+        break;
+      case 40: // down arrow
         PDFViewerApplication.goNext();
         handled = true;
         break;
