@@ -140,6 +140,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           var data = message.data;
           if (message.success) {
             dict.remove('Filter');
+            dict.remove('ColorSpace');
             dict.set('NumComps', message.numComps);
             dict.set('BitsPerComponent', message.bitsPerComponent);
             return new Stream(data, 0, data.length, dict);
