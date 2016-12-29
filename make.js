@@ -12,9 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* jshint node:true */
-/* globals cat, cd, cp, echo, env, exec, exit, find, ls, mkdir, mv, process, rm,
-           sed, target, test */
+/* eslint-env node, shelljs */
 
 'use strict';
 
@@ -47,6 +45,7 @@ var ROOT_DIR = __dirname + '/', // absolute path to project's root
     GH_PAGES_DIR = BUILD_DIR + 'gh-pages/',
     GENERIC_DIR = BUILD_DIR + 'generic/',
     MINIFIED_DIR = BUILD_DIR + 'minified/',
+    DIST_DIR = BUILD_DIR + 'dist/',
     SINGLE_FILE_DIR = BUILD_DIR + 'singlefile/',
     COMPONENTS_DIR = BUILD_DIR + 'components/',
     REPO = 'git@github.com:mozilla/pdf.js.git',
@@ -75,17 +74,19 @@ function getCurrentVersion() {
     .version;
 }
 
+function execGulp(cmd) {
+  var result = exec('gulp ' + cmd);
+  if (result.code) {
+    echo('ERROR: gulp exited with ' + result.code);
+    exit(result.code);
+  }
+}
+
 //
 // make all
 //
 target.all = function() {
-  // Don't do anything by default
-  echo('Please specify a target. Available targets:');
-  for (var t in target) {
-    if (t !== 'all') {
-      echo('  ' + t);
-    }
-  }
+  execGulp('default');
 };
 
 
@@ -102,6 +103,7 @@ var COMMON_WEB_FILES =
       ['web/viewer.html'],
     COMMON_FIREFOX_FILES_PREPROCESS =
       [FIREFOX_CONTENT_DIR + 'PdfStreamConverter.jsm',
+       FIREFOX_CONTENT_DIR + 'PdfJsNetwork.jsm',
        FIREFOX_CONTENT_DIR + 'PdfjsContentUtils.jsm',
        FIREFOX_CONTENT_DIR + 'PdfjsChromeUtils.jsm'];
 
@@ -153,7 +155,7 @@ target.genericviewer = function() {
 // make generic viewer with pdf.js
 //
 target.generic = function() {
-  exec('gulp bundle-generic');
+  execGulp('bundle-generic');
 
   target.locale();
 
@@ -197,7 +199,7 @@ target.generic = function() {
 };
 
 target.components = function() {
-  exec('gulp bundle-components');
+  execGulp('bundle-components');
 
   cd(ROOT_DIR);
   echo();
@@ -235,27 +237,7 @@ target.components = function() {
 };
 
 target.jsdoc = function() {
-  echo();
-  echo('### Generating jsdoc');
-
-  var JSDOC_FILES = [
-    'src/doc_helper.js',
-    'src/display/api.js',
-    'src/display/global.js',
-    'src/shared/util.js',
-    'src/core/annotation.js'
-  ];
-
-  if (test('-d', JSDOC_DIR)) {
-    rm('-rf', JSDOC_DIR);
-  }
-
-  mkdir('-p',JSDOC_DIR);
-
-  exec('"node_modules/.bin/jsdoc" -d "' + JSDOC_DIR + '" ' +
-       JSDOC_FILES.join(' '));
-
-  echo();
+  execGulp('jsdoc');
 };
 
 //
@@ -269,6 +251,7 @@ target.web = function() {
   target.extension();
   target.jsdoc();
 
+  cd(ROOT_DIR);
   echo();
   echo('### Creating web site');
 
@@ -324,8 +307,8 @@ target.dist = function() {
   target.generic();
   target.singlefile();
   target.components();
+  target.minified();
 
-  var DIST_DIR = BUILD_DIR + 'dist/';
   var DIST_REPO_URL = 'https://github.com/mozilla/pdfjs-dist';
   var VERSION = getCurrentVersion();
 
@@ -352,6 +335,9 @@ target.dist = function() {
     SINGLE_FILE_DIR + 'build/pdf.combined.js',
     SRC_DIR + 'pdf.worker.entry.js',
   ], DIST_DIR + 'build/');
+  cp(MINIFIED_DIR + 'build/pdf.js', DIST_DIR + 'build/pdf.min.js');
+  cp(MINIFIED_DIR + 'build/pdf.worker.js',
+     DIST_DIR + 'build/pdf.worker.min.js');
 
   mkdir('-p', DIST_DIR + 'web/');
   cp('-R', [
@@ -422,7 +408,7 @@ target.dist = function() {
 };
 
 target.publish = function() {
-  exec('gulp publish');
+  execGulp('publish');
 };
 
 //
@@ -518,7 +504,7 @@ target.cmaps = function () {
 // Bundles all source files into one wrapper 'pdf.js' file, in the given order.
 //
 target.bundle = function(args) {
-  exec('gulp bundle');
+  execGulp('bundle');
 };
 
 //
@@ -533,7 +519,7 @@ target.singlefile = function() {
 
   var SINGLE_FILE_BUILD_DIR = SINGLE_FILE_DIR + 'build/';
 
-  exec('gulp bundle-singlefile');
+  execGulp('bundle-singlefile');
 
   cd(ROOT_DIR);
 
@@ -578,7 +564,7 @@ function cleanupCSSSource(file) {
 // modern HTML5 browsers.
 //
 target.minified = function() {
-  exec('gulp bundle-minified');
+  execGulp('bundle-minified');
   target.locale();
 
   cd(ROOT_DIR);
@@ -657,17 +643,11 @@ target.minified = function() {
 // make extension
 //
 target.extension = function() {
-  cd(ROOT_DIR);
-  echo();
-  echo('### Building extensions');
-
-  target.locale();
-  target.firefox();
-  target.chromium();
+  execGulp('extension');
 };
 
 target.buildnumber = function() {
-  exec('gulp buildnumber');
+  execGulp('buildnumber');
 };
 
 //
@@ -703,7 +683,7 @@ target.firefox = function() {
       FIREFOX_EXTENSION_NAME = 'pdf.js.xpi';
 
   target.locale();
-  exec('gulp bundle-firefox');
+  execGulp('bundle-firefox');
   cd(ROOT_DIR);
 
   // Clear out everything in the firefox extension build directory
@@ -823,7 +803,7 @@ target.mozcentral = function() {
         ['icon.png',
          'icon64.png'];
 
-  exec('gulp bundle-mozcentral');
+  execGulp('bundle-mozcentral');
   cd(ROOT_DIR);
 
   // Clear out everything in the firefox extension build directory
@@ -923,7 +903,7 @@ target.chromium = function() {
   var CHROME_BUILD_DIR = BUILD_DIR + '/chromium/',
       CHROME_BUILD_CONTENT_DIR = CHROME_BUILD_DIR + '/content/';
 
-  exec('gulp bundle-chromium');
+  execGulp('bundle-chromium');
   cd(ROOT_DIR);
 
   // Clear out everything in the chrome extension build directory
@@ -942,7 +922,7 @@ target.chromium = function() {
         'extensions/chromium/*.html',
         'extensions/chromium/*.js',
         'extensions/chromium/*.css',
-        'extensions/chromium/icon*.png',],
+        'extensions/chromium/icon*.png'],
        CHROME_BUILD_DIR],
       ['extensions/chromium/pageAction/*.*', CHROME_BUILD_DIR + '/pageAction'],
       ['extensions/chromium/options/*.*', CHROME_BUILD_DIR + '/options'],
@@ -1061,7 +1041,7 @@ target.chromium = function() {
 // make test
 //
 target.test = function() {
-  exec('gulp test');
+  execGulp('test');
 };
 
 //
@@ -1069,7 +1049,7 @@ target.test = function() {
 // (Special tests for the Github bot)
 //
 target.bottest = function() {
-  exec('gulp bottest');
+  execGulp('bottest');
 };
 
 //
@@ -1077,9 +1057,9 @@ target.bottest = function() {
 //
 target.browsertest = function(options) {
   if (options && options.noreftest) {
-    exec('gulp browsertest-noreftest');
+    execGulp('browsertest-noreftest');
   } else {
-    exec('gulp browsertest');
+    execGulp('browsertest');
   }
 };
 
@@ -1087,21 +1067,21 @@ target.browsertest = function(options) {
 // make unittest
 //
 target.unittest = function(options, callback) {
-  exec('gulp unittest');
+  execGulp('unittest');
 };
 
 //
 // make fonttest
 //
 target.fonttest = function(options, callback) {
-  exec('gulp fonttest');
+  execGulp('fonttest');
 };
 
 //
 // make botmakeref
 //
 target.botmakeref = function() {
-  exec('gulp botmakeref');
+  execGulp('botmakeref');
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1275,14 +1255,14 @@ target.mozcentralcheck = function() {
 // make server
 //
 target.server = function () {
-  exit(exec('gulp server'));
+  execGulp('server');
 };
 
 //
 // make lint
 //
 target.lint = function() {
-  exit(exec('gulp lint'));
+  execGulp('lint');
 };
 
 //
@@ -1296,21 +1276,21 @@ target.lintviewer = function() {
 // make clean
 //
 target.clean = function() {
-  exit(exec('gulp clean'));
+  execGulp('clean');
 };
 
 //
 // make makefile
 //
 target.makefile = function () {
-  exit(exec('gulp makefile'));
+  execGulp('makefile');
 };
 
 //
 //make importl10n
 //
 target.importl10n = function() {
-  exit(exec('gulp importl10n'));
+  execGulp('importl10n');
 };
 
 exports.stripCommentHeaders = stripCommentHeaders;

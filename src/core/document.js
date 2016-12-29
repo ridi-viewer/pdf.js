@@ -42,6 +42,7 @@ var error = sharedUtil.error;
 var info = sharedUtil.info;
 var isArray = sharedUtil.isArray;
 var isArrayBuffer = sharedUtil.isArrayBuffer;
+var isNum = sharedUtil.isNum;
 var isString = sharedUtil.isString;
 var shadow = sharedUtil.shadow;
 var stringToBytes = sharedUtil.stringToBytes;
@@ -67,6 +68,7 @@ var AnnotationFactory = coreAnnotation.AnnotationFactory;
 
 var Page = (function PageClosure() {
 
+  var DEFAULT_USER_UNIT = 1.0;
   var LETTER_SIZE_MEDIABOX = [0, 0, 612, 792];
 
   function Page(pdfManager, xref, pageIndex, pageDict, ref, fontCache) {
@@ -76,6 +78,7 @@ var Page = (function PageClosure() {
     this.xref = xref;
     this.ref = ref;
     this.fontCache = fontCache;
+    this.uniquePrefix = 'p' + this.pageIndex + '_';
     this.idCounters = {
       obj: 0
     };
@@ -88,13 +91,14 @@ var Page = (function PageClosure() {
       return this.pageDict.get(key);
     },
 
-    getInheritedPageProp: function Page_getInheritedPageProp(key) {
+    getInheritedPageProp: function Page_getInheritedPageProp(key, getArray) {
       var dict = this.pageDict, valueArray = null, loopCount = 0;
       var MAX_LOOP_COUNT = 100;
+      getArray = getArray || false;
       // Always walk up the entire parent chain, to be able to find
       // e.g. \Resources placed on multiple levels of the tree.
       while (dict) {
-        var value = dict.get(key);
+        var value = getArray ? dict.getArray(key) : dict.get(key);
         if (value) {
           if (!valueArray) {
             valueArray = [];
@@ -129,30 +133,42 @@ var Page = (function PageClosure() {
     },
 
     get mediaBox() {
-      var obj = this.getInheritedPageProp('MediaBox');
+      var mediaBox = this.getInheritedPageProp('MediaBox', true);
       // Reset invalid media box to letter size.
-      if (!isArray(obj) || obj.length !== 4) {
-        obj = LETTER_SIZE_MEDIABOX;
+      if (!isArray(mediaBox) || mediaBox.length !== 4) {
+        return shadow(this, 'mediaBox', LETTER_SIZE_MEDIABOX);
       }
-      return shadow(this, 'mediaBox', obj);
+      return shadow(this, 'mediaBox', mediaBox);
+    },
+
+    get cropBox() {
+      var cropBox = this.getInheritedPageProp('CropBox', true);
+      // Reset invalid crop box to media box.
+      if (!isArray(cropBox) || cropBox.length !== 4) {
+        return shadow(this, 'cropBox', this.mediaBox);
+      }
+      return shadow(this, 'cropBox', cropBox);
+    },
+
+    get userUnit() {
+      var obj = this.getPageProp('UserUnit');
+      if (!isNum(obj) || obj <= 0) {
+        obj = DEFAULT_USER_UNIT;
+      }
+      return shadow(this, 'userUnit', obj);
     },
 
     get view() {
-      var mediaBox = this.mediaBox;
-      var cropBox = this.getInheritedPageProp('CropBox');
-      if (!isArray(cropBox) || cropBox.length !== 4) {
-        return shadow(this, 'view', mediaBox);
-      }
-
       // From the spec, 6th ed., p.963:
       // "The crop, bleed, trim, and art boxes should not ordinarily
       // extend beyond the boundaries of the media box. If they do, they are
       // effectively reduced to their intersection with the media box."
-      cropBox = Util.intersect(cropBox, mediaBox);
-      if (!cropBox) {
+      var mediaBox = this.mediaBox, cropBox = this.cropBox;
+      if (mediaBox === cropBox) {
         return shadow(this, 'view', mediaBox);
       }
-      return shadow(this, 'view', cropBox);
+      var intersection = Util.intersect(cropBox, mediaBox);
+      return shadow(this, 'view', intersection || mediaBox);
     },
 
     get rotate() {
@@ -204,7 +220,8 @@ var Page = (function PageClosure() {
       }.bind(this));
     },
 
-    getOperatorList: function Page_getOperatorList(handler, task, intent) {
+    getOperatorList: function Page_getOperatorList(handler, task, intent,
+                                                   renderInteractiveForms) {
       var self = this;
 
       var pdfManager = this.pdfManager;
@@ -223,7 +240,7 @@ var Page = (function PageClosure() {
 
       var partialEvaluator = new PartialEvaluator(pdfManager, this.xref,
                                                   handler, this.pageIndex,
-                                                  'p' + this.pageIndex + '_',
+                                                  this.uniquePrefix,
                                                   this.idCounters,
                                                   this.fontCache,
                                                   this.evaluatorOptions);
@@ -256,7 +273,8 @@ var Page = (function PageClosure() {
         }
 
         var annotationsReadyPromise = Annotation.appendToOperatorList(
-          annotations, pageOpList, partialEvaluator, task, intent);
+          annotations, pageOpList, partialEvaluator, task, intent,
+          renderInteractiveForms);
         return annotationsReadyPromise.then(function () {
           pageOpList.flush(true);
           return pageOpList;
@@ -290,7 +308,7 @@ var Page = (function PageClosure() {
         var contentStream = data[0];
         var partialEvaluator = new PartialEvaluator(pdfManager, self.xref,
                                                     handler, self.pageIndex,
-                                                    'p' + self.pageIndex + '_',
+                                                    self.uniquePrefix,
                                                     self.idCounters,
                                                     self.fontCache,
                                                     self.evaluatorOptions);
@@ -325,7 +343,10 @@ var Page = (function PageClosure() {
       var annotationFactory = new AnnotationFactory();
       for (var i = 0, n = annotationRefs.length; i < n; ++i) {
         var annotationRef = annotationRefs[i];
-        var annotation = annotationFactory.create(this.xref, annotationRef);
+        var annotation = annotationFactory.create(this.xref, annotationRef,
+                                                  this.pdfManager,
+                                                  this.uniquePrefix,
+                                                  this.idCounters);
         if (annotation) {
           annotations.push(annotation);
         }

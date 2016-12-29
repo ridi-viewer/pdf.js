@@ -12,7 +12,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals pdfjsFilePath, pdfjsVersion, pdfjsBuild, RidiPdfViewer */
+/* globals pdfjsFilePath, pdfjsVersion, pdfjsBuild, requirejs, pdfjsLibs, RidiPdfViewer,
+           __webpack_require__ */
 
 'use strict';
 
@@ -49,6 +50,8 @@ var error = sharedUtil.error;
 var deprecated = sharedUtil.deprecated;
 var getVerbosityLevel = sharedUtil.getVerbosityLevel;
 var info = sharedUtil.info;
+var isInt = sharedUtil.isInt;
+var isArray = sharedUtil.isArray;
 var isArrayBuffer = sharedUtil.isArrayBuffer;
 var isSameOrigin = sharedUtil.isSameOrigin;
 var loadJpegStream = sharedUtil.loadJpegStream;
@@ -68,13 +71,39 @@ var isWorkerDisabled = false;
 var workerSrc;
 var isPostMessageTransfersDisabled = false;
 
-//#if PRODUCTION && !SINGLE_FILE
-//#if GENERIC
-//#include $ROOT/src/frameworks.js
-//#else
-//var fakeWorkerFilesLoader = null;
-//#endif
-//#endif
+var fakeWorkerFilesLoader = null;
+var useRequireEnsure = false;
+if (typeof PDFJSDev !== 'undefined' &&
+    PDFJSDev.test('GENERIC && !SINGLE_FILE')) {
+  // For GENERIC build we need add support of different fake file loaders
+  // for different  frameworks.
+  if (typeof window === 'undefined') {
+    // node.js - disable worker and set require.ensure.
+    isWorkerDisabled = true;
+    if (typeof require.ensure === 'undefined') {
+      require.ensure = require('node-ensure');
+    }
+    useRequireEnsure = true;
+  }
+  if (typeof __webpack_require__ !== 'undefined') {
+    useRequireEnsure = true;
+  }
+  if (typeof requirejs !== 'undefined' && requirejs.toUrl) {
+    workerSrc = requirejs.toUrl('pdfjs-dist/build/pdf.worker.js');
+  }
+  var dynamicLoaderSupported =
+    typeof requirejs !== 'undefined' && requirejs.load;
+  fakeWorkerFilesLoader = useRequireEnsure ? (function (callback) {
+    require.ensure([], function () {
+      var worker = require('./pdf.worker.js');
+      callback(worker.WorkerMessageHandler);
+    });
+  }) : dynamicLoaderSupported ? (function (callback) {
+    requirejs(['pdfjs-dist/build/pdf.worker'], function (worker) {
+      callback(worker.WorkerMessageHandler);
+    });
+  }) : null;
+}
 
 /**
  * Document initialization / loading parameters object.
@@ -100,6 +129,9 @@ var isPostMessageTransfersDisabled = false;
  *   2^16 = 65536.
  * @property {PDFWorker}  worker - The worker that will be used for the loading
  *   and parsing of the PDF data.
+ * @property {string} docBaseUrl - (optional) The base URL of the document,
+ *   used when attempting to recover valid absolute URLs for annotations, and
+ *   outline items, that (incorrectly) only specify relative URLs.
  */
 
 /**
@@ -272,6 +304,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
     disableCreateObjectURL: getDefaultSetting('disableCreateObjectURL'),
     postMessageTransfers: getDefaultSetting('postMessageTransfers') &&
                           !isPostMessageTransfersDisabled,
+    docBaseUrl: source.docBaseUrl,
   }).then(function (workerId) {
     if (worker.destroyed) {
       throw new Error('Worker was destroyed');
@@ -598,9 +631,9 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  * Page getTextContent parameters.
  *
  * @typedef {Object} getTextContentParameters
- * @param {boolean} normalizeWhitespace - replaces all occurrences of
+ * @property {boolean} normalizeWhitespace - replaces all occurrences of
  *   whitespace with standard spaces (0x20). The default value is `false`.
- * @param {boolean} disableCombineTextItems - do not attempt to combine
+ * @property {boolean} disableCombineTextItems - do not attempt to combine
  *   same line {@link TextItem}'s. The default value is `false`.
  */
 
@@ -609,8 +642,7 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  *
  * @typedef {Object} TextContent
  * @property {array} items - array of {@link TextItem}
- * @property {Object} styles - {@link TextStyles} objects, indexed by font
- *                    name.
+ * @property {Object} styles - {@link TextStyles} objects, indexed by font name.
  */
 
 /**
@@ -639,10 +671,10 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  * Page annotation parameters.
  *
  * @typedef {Object} GetAnnotationsParameters
- * @param {string} intent - Determines the annotations that will be fetched,
- *                 can be either 'display' (viewable annotations) or 'print'
- *                 (printable annotations).
- *                 If the parameter is omitted, all annotations are fetched.
+ * @property {string} intent - Determines the annotations that will be fetched,
+ *                    can be either 'display' (viewable annotations) or 'print'
+ *                    (printable annotations).
+ *                    If the parameter is omitted, all annotations are fetched.
  */
 
 /**
@@ -654,6 +686,9 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  *                                calling of PDFPage.getViewport method.
  * @property {string} intent - Rendering intent, can be 'display' or 'print'
  *                    (default value is 'display').
+ * @property {boolean} renderInteractiveForms - (optional) Whether or not
+ *                     interactive form elements are rendered in the display
+ *                     layer. If so, we do not render them on canvas as well.
  * @property {Array}  transform - (optional) Additional transform, applied
  *                    just before viewport transform.
  * @property {Object} imageLayer - (optional) An object that has beginLayout,
@@ -713,6 +748,12 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       return this.pageInfo.ref;
     },
     /**
+     * @return {number} The default size of units in 1/72nds of an inch.
+     */
+    get userUnit() {
+      return this.pageInfo.userUnit;
+    },
+    /**
      * @return {Array} An array of the visible portion of the PDF page in the
      * user space units - [x1, y1, x2, y2].
      */
@@ -762,6 +803,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       this.pendingCleanup = false;
 
       var renderingIntent = (params.intent === 'print' ? 'print' : 'display');
+      var renderInteractiveForms = (params.renderInteractiveForms === true ?
+                                    true : /* Default */ false);
 
       if (!this.intentStates[renderingIntent]) {
         this.intentStates[renderingIntent] = Object.create(null);
@@ -782,7 +825,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
         this.stats.time('Page Request');
         this.transport.messageHandler.send('RenderPageRequest', {
           pageIndex: this.pageNumber - 1,
-          intent: renderingIntent
+          intent: renderingIntent,
+          renderInteractiveForms: renderInteractiveForms,
         });
       }
 
@@ -1025,11 +1069,11 @@ var PDFWorker = (function PDFWorkerClosure() {
     if (getDefaultSetting('workerSrc')) {
       return getDefaultSetting('workerSrc');
     }
-//#if PRODUCTION && !(MOZCENTRAL || FIREFOX)
-//  if (pdfjsFilePath) {
-//    return pdfjsFilePath.replace(/\.js$/i, '.worker.js');
-//  }
-//#endif
+    if (typeof PDFJSDev !== 'undefined' &&
+        PDFJSDev.test('PRODUCTION && !(MOZCENTRAL || FIREFOX)') &&
+        pdfjsFilePath) {
+      return pdfjsFilePath.replace(/\.js$/i, '.worker.js');
+    }
     error('No PDFJS.workerSrc specified');
   }
 
@@ -1038,12 +1082,14 @@ var PDFWorker = (function PDFWorkerClosure() {
   // Loads worker code into main thread.
   function setupFakeWorkerGlobal() {
     var WorkerMessageHandler;
-    if (!fakeWorkerFilesLoadedCapability) {
-      fakeWorkerFilesLoadedCapability = createPromiseCapability();
-      // In the developer build load worker_loader which in turn loads all the
-      // other files and resolves the promise. In production only the
-      // pdf.worker.js file is needed.
-//#if !PRODUCTION
+    if (fakeWorkerFilesLoadedCapability) {
+      return fakeWorkerFilesLoadedCapability.promise;
+    }
+    fakeWorkerFilesLoadedCapability = createPromiseCapability();
+    // In the developer build load worker_loader which in turn loads all the
+    // other files and resolves the promise. In production only the
+    // pdf.worker.js file is needed.
+    if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
       if (typeof amdRequire === 'function') {
         amdRequire(['pdfjs/core/network', 'pdfjs/core/worker'],
             function (network, worker) {
@@ -1057,22 +1103,97 @@ var PDFWorker = (function PDFWorkerClosure() {
       } else {
         throw new Error('AMD or CommonJS must be used to load fake worker.');
       }
-//#endif
-//#if PRODUCTION && SINGLE_FILE
-//    WorkerMessageHandler = pdfjsLibs.pdfjsCoreWorker.WorkerMessageHandler;
-//    fakeWorkerFilesLoadedCapability.resolve(WorkerMessageHandler);
-//#endif
-//#if PRODUCTION && !SINGLE_FILE
-//    var loader = fakeWorkerFilesLoader || function (callback) {
-//      Util.loadScript(getWorkerSrc(), function () {
-//        callback(window.pdfjsDistBuildPdfWorker.WorkerMessageHandler);
-//      });
-//    };
-//    loader(fakeWorkerFilesLoadedCapability.resolve);
-//#endif
+    } else if (PDFJSDev.test('SINGLE_FILE')) {
+      WorkerMessageHandler = pdfjsLibs.pdfjsCoreWorker.WorkerMessageHandler;
+      fakeWorkerFilesLoadedCapability.resolve(WorkerMessageHandler);
+    } else {
+      var loader = fakeWorkerFilesLoader || function (callback) {
+        Util.loadScript(getWorkerSrc(), function () {
+          callback(window.pdfjsDistBuildPdfWorker.WorkerMessageHandler);
+        });
+      };
+      loader(fakeWorkerFilesLoadedCapability.resolve);
     }
     return fakeWorkerFilesLoadedCapability.promise;
   }
+
+  function FakeWorkerPort(defer) {
+    this._listeners = [];
+    this._defer = defer;
+    this._deferred = Promise.resolve(undefined);
+  }
+  FakeWorkerPort.prototype = {
+    postMessage: function (obj, transfers) {
+      function cloneValue(value) {
+        // Trying to perform a structured clone close to the spec, including
+        // transfers.
+        if (typeof value !== 'object' || value === null) {
+          return value;
+        }
+        if (cloned.has(value)) { // already cloned the object
+          return cloned.get(value);
+        }
+        var result;
+        var buffer;
+        if ((buffer = value.buffer) && isArrayBuffer(buffer)) {
+          // We found object with ArrayBuffer (typed array).
+          var transferable = transfers && transfers.indexOf(buffer) >= 0;
+          if (value === buffer) {
+            // Special case when we are faking typed arrays in compatibility.js.
+            result = value;
+          } else if (transferable) {
+            result = new value.constructor(buffer, value.byteOffset,
+                                           value.byteLength);
+          } else {
+            result = new value.constructor(value);
+          }
+          cloned.set(value, result);
+          return result;
+        }
+        result = isArray(value) ? [] : {};
+        cloned.set(value, result); // adding to cache now for cyclic references
+        // Cloning all value and object properties, however ignoring properties
+        // defined via getter.
+        for (var i in value) {
+          var desc, p = value;
+          while (!(desc = Object.getOwnPropertyDescriptor(p, i))) {
+            p = Object.getPrototypeOf(p);
+          }
+          if (typeof desc.value === 'undefined' ||
+              typeof desc.value === 'function') {
+            continue;
+          }
+          result[i] = cloneValue(desc.value);
+        }
+        return result;
+      }
+
+      if (!this._defer) {
+        this._listeners.forEach(function (listener) {
+          listener.call(this, {data: obj});
+        }, this);
+        return;
+      }
+
+      var cloned = new WeakMap();
+      var e = {data: cloneValue(obj)};
+      this._deferred.then(function () {
+        this._listeners.forEach(function (listener) {
+          listener.call(this, e);
+        }, this);
+      }.bind(this));
+    },
+    addEventListener: function (name, listener) {
+      this._listeners.push(listener);
+    },
+    removeEventListener: function (name, listener) {
+      var i = this._listeners.indexOf(listener);
+      this._listeners.splice(i, 1);
+    },
+    terminate: function () {
+      this._listeners = [];
+    }
+  };
 
   function createCDNWrapper(url) {
     // We will rely on blob URL's property to specify origin.
@@ -1112,20 +1233,20 @@ var PDFWorker = (function PDFWorkerClosure() {
       // all requirements to run parts of pdf.js in a web worker.
       // Right now, the requirement is, that an Uint8Array is still an
       // Uint8Array as it arrives on the worker. (Chrome added this with v.15.)
-//#if !SINGLE_FILE
-      if (!isWorkerDisabled && !getDefaultSetting('disableWorker') &&
+      if ((typeof PDFJSDev === 'undefined' || !PDFJSDev.test('SINGLE_FILE')) &&
+          !isWorkerDisabled && !getDefaultSetting('disableWorker') &&
           typeof Worker !== 'undefined') {
         var workerSrc = getWorkerSrc();
 
         try {
-//#if GENERIC
-//        // Wraps workerSrc path into blob URL, if the former does not belong
-//        // to the same origin.
-//        if (!isSameOrigin(window.location.href, workerSrc)) {
-//          workerSrc = createCDNWrapper(
-//            new URL(workerSrc, window.location).href);
-//        }
-//#endif
+          // Wraps workerSrc path into blob URL, if the former does not belong
+          // to the same origin.
+          if (typeof PDFJSDev !== 'undefined' && PDFJSDev.test('GENERIC') &&
+              !isSameOrigin(window.location.href, workerSrc)) {
+            workerSrc = createCDNWrapper(
+              new URL(workerSrc, window.location).href);
+          }
+
           // Some versions of FF can't create a worker on localhost, see:
           // https://bugzilla.mozilla.org/show_bug.cgi?id=683280
           var worker = new Worker(workerSrc);
@@ -1193,7 +1314,7 @@ var PDFWorker = (function PDFWorkerClosure() {
             }
             try {
               sendTest();
-            } catch (e)  {
+            } catch (e) {
               // We need fallback to a faked worker.
               this._setupFakeWorker();
             }
@@ -1225,7 +1346,6 @@ var PDFWorker = (function PDFWorkerClosure() {
           info('The worker has been disabled.');
         }
       }
-//#endif
       // Either workers are disabled, not supported or have thrown an exception.
       // Thus, we fallback to a faked worker.
       this._setupFakeWorker();
@@ -1243,24 +1363,11 @@ var PDFWorker = (function PDFWorkerClosure() {
           return;
         }
 
-        // If we don't use a worker, just post/sendMessage to the main thread.
-        var port = {
-          _listeners: [],
-          postMessage: function (obj) {
-            var e = {data: obj};
-            this._listeners.forEach(function (listener) {
-              listener.call(this, e);
-            }, this);
-          },
-          addEventListener: function (name, listener) {
-            this._listeners.push(listener);
-          },
-          removeEventListener: function (name, listener) {
-            var i = this._listeners.indexOf(listener);
-            this._listeners.splice(i, 1);
-          },
-          terminate: function () {}
-        };
+        // We cannot turn on proper fake port simulation (this includes
+        // structured cloning) when typed arrays are not supported. Relying
+        // on a chance that messages will be sent in proper order.
+        var isTypedArraysPresent = Uint8Array !== Float32Array;
+        var port = new FakeWorkerPort(isTypedArraysPresent);
         this._port = port;
 
         // All fake workers use the same port, making id unique.
@@ -1609,7 +1716,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
         }
         _UnsupportedManager.notify(featureId);
       }, this);
-      
+
       messageHandler.on('JpxDecode', function(data) {
         if (this.destroyed) {
           return Promise.reject('Worker was terminated');
@@ -1622,11 +1729,11 @@ var WorkerTransport = (function WorkerTransportClosure() {
           var xhr = new XMLHttpRequest();
           xhr.open('GET', imageUrl, true);
           xhr.responseType = 'blob';
-  
+
           var failure = function(evt) { reject(evt); };
           xhr.addEventListener('error', failure);
           xhr.addEventListener('abort', failure);
-          
+
           xhr.onload = function(e) {
             if (this.status !== 200) {
               reject(e);
@@ -1641,7 +1748,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 var result = '';
                 var slice;
                 while (index < length) {
-                  slice = u8Arr.subarray(index, Math.min(index + chunkSize, length)); 
+                  slice = u8Arr.subarray(index, Math.min(index + chunkSize, length));
                   result += String.fromCharCode.apply(null, slice);
                   index += chunkSize;
                 }
@@ -1672,7 +1779,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 for (var i = 0; i < decodedImageDataStringLength; i++) {
                   decodedImageData[i] = decodedImageDataString.charCodeAt(i);
                 }
-                
+
                 nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
                 resolve({
                   success: true,
@@ -1694,7 +1801,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
 
       messageHandler.on('JpegDecode', function(data) {
         if (this.destroyed) {
-          return Promise.reject('Worker was terminated');
+          return Promise.reject(new Error('Worker was destroyed'));
         }
 
         var imageUrl = data[0];
@@ -1745,8 +1852,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
     },
 
     getPage: function WorkerTransport_getPage(pageNumber, capability) {
-      if (pageNumber <= 0 || pageNumber > this.numPages ||
-          (pageNumber|0) !== pageNumber) {
+      if (!isInt(pageNumber) || pageNumber <= 0 || pageNumber > this.numPages) {
         return Promise.reject(new Error('Invalid page request'));
       }
 
@@ -1769,12 +1875,11 @@ var WorkerTransport = (function WorkerTransportClosure() {
     },
 
     getPageIndex: function WorkerTransport_getPageIndexByRef(ref) {
-      return this.messageHandler.sendWithPromise('GetPageIndex', { ref: ref }).
-        then(function (pageIndex) {
-          return pageIndex;
-        }, function (reason) {
-          return Promise.reject(new Error(reason));
-        });
+      return this.messageHandler.sendWithPromise('GetPageIndex', {
+        ref: ref,
+      }).catch(function (reason) {
+        return Promise.reject(new Error(reason));
+      });
     },
 
     getAnnotations: function WorkerTransport_getAnnotations(pageIndex, intent) {

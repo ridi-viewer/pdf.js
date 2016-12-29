@@ -90,7 +90,7 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
       if (this.switchInProgress || !this.viewer.hasChildNodes()) {
         return;
       }
-      
+
       this._setSwitchInProgress();
       this._notifyStateChange();
 
@@ -171,7 +171,7 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
              pageSwitchDirection === PageSwitchDirection.DOWN)) {
           return;
         }
-        this.pdfViewer.currentPageNumber = 
+        this.pdfViewer.currentPageNumber =
           page + pageSwitchDirection * this.pdfViewer.pageSwitchUnit;
         this.mouseScrollTimeStamp = currentTime;
       }
@@ -272,7 +272,7 @@ var PDFPresentationMode = (function PDFPresentationModeClosure() {
         var viewerContainerRect = viewerContainer.getBoundingClientRect();
         deltaY = viewerContainerRect.top - pageViewRect.top;
       }
-      
+
       this.container.classList.remove(ACTIVE_SELECTOR);
 
       // Ensure that the correct position is scrolled into view when exiting

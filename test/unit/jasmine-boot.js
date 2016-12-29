@@ -34,7 +34,7 @@
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-/*globals jasmineRequire, jasmine, TestReporter */
+/* globals jasmineRequire, TestReporter */
 
 // Modified jasmine's boot.js file to load PDF.js libraries async.
 
@@ -49,14 +49,15 @@ function initializePDFJS(callback) {
       'pdfjs/core/fonts', 'pdfjs/core/ps_parser', 'pdfjs/core/function',
       'pdfjs/core/parser', 'pdfjs/core/evaluator', 'pdfjs/core/cmap',
       'pdfjs/core/worker', 'pdfjs/core/network', 'pdfjs/core/type1_parser',
-      'pdfjs/core/cff_parser', 'pdfjs/display/api', 'pdfjs/display/metadata',
-      'pdfjs/display/dom_utils', 'pdfjs-web/ui_utils', 'pdfjs/core/unicode',
-      'pdfjs/core/glyphlist'],
+      'pdfjs/core/cff_parser', 'pdfjs/core/murmurhash3', 'pdfjs/display/api',
+      'pdfjs/display/metadata', 'pdfjs/display/dom_utils', 'pdfjs-web/ui_utils',
+      'pdfjs/core/unicode', 'pdfjs/core/glyphlist'],
     function (sharedUtil, displayGlobal, corePrimitives, coreAnnotation,
               coreCrypto, coreStream, coreFonts, corePsParser, coreFunction,
               coreParser, coreEvaluator, coreCMap, coreWorker, coreNetwork,
-              coreType1Parser, coreCFFParser, displayAPI, displayMetadata,
-              displayDOMUtils, webUIUtils, coreUnicode, coreGlyphList) {
+              coreType1Parser, coreCFFParser, coreMurmurHash3, displayAPI,
+              displayMetadata, displayDOMUtils, webUIUtils, coreUnicode,
+              coreGlyphList) {
 
       pdfjsLibs = {
         sharedUtil: sharedUtil,
@@ -75,6 +76,7 @@ function initializePDFJS(callback) {
         coreNetwork: coreNetwork,
         coreType1Parser: coreType1Parser,
         coreCFFParser: coreCFFParser,
+        coreMurmurHash3: coreMurmurHash3,
         displayAPI: displayAPI,
         displayMetadata: displayMetadata,
         displayDOMUtils: displayDOMUtils,
@@ -201,4 +203,3 @@ function initializePDFJS(callback) {
     return destination;
   }
 }());
-

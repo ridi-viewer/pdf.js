@@ -11,6 +11,9 @@
   "disableFontFace": false,
   "disableTextLayer": true,
   "useOnlyCssZoom": false,
-  "externalLinkTarget": 0
+  "externalLinkTarget": 0,
+  "enhanceTextSelection": false,
+  "renderer": "canvas",
+  "renderInteractiveForms": false,
+  "disablePageLabels": true
 }
-

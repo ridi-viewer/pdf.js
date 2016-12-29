@@ -54,7 +54,7 @@ function isPdfDownloadable(details) {
  * @return {undefined|{name: string, value: string}} The header, if found.
  */
 function getHeaderFromHeaders(headers, headerName) {
-  for (var i=0; i<headers.length; ++i) {
+  for (var i = 0; i < headers.length; ++i) {
     var header = headers[i];
     if (header.name.toLowerCase() === headerName) {
       return header;
@@ -72,10 +72,20 @@ function getHeaderFromHeaders(headers, headerName) {
 function isPdfFile(details) {
   var header = getHeaderFromHeaders(details.responseHeaders, 'content-type');
   if (header) {
-    var headerValue = header.value.toLowerCase().split(';',1)[0].trim();
-    return (headerValue === 'application/pdf' ||
-            headerValue === 'application/octet-stream' &&
-            details.url.toLowerCase().indexOf('.pdf') > 0);
+    var headerValue = header.value.toLowerCase().split(';', 1)[0].trim();
+    if (headerValue === 'application/pdf') {
+      return true;
+    }
+    if (headerValue === 'application/octet-stream') {
+      if (details.url.toLowerCase().indexOf('.pdf') > 0) {
+        return true;
+      }
+      var cdHeader =
+        getHeaderFromHeaders(details.responseHeaders, 'content-disposition');
+      if (cdHeader && /\.pdf(["']|$)/i.test(cdHeader.value)) {
+        return true;
+      }
+    }
   }
 }
 
@@ -143,7 +153,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     ],
     types: ['main_frame', 'sub_frame']
   },
-  ['blocking','responseHeaders']);
+  ['blocking', 'responseHeaders']);
 
 chrome.webRequest.onBeforeRequest.addListener(
   function onBeforeRequestForFTP(details) {

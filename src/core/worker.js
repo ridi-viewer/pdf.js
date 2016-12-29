@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals NetworkManager, module */
+/* globals module */
 
 'use strict';
 
@@ -82,14 +82,14 @@ var WorkerTask = (function WorkerTaskClosure() {
   return WorkerTask;
 })();
 
-//#if !PRODUCTION
+if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
 /**
  * Interface that represents PDF data transport. If possible, it allows
  * progressively load entire or fragment of the PDF binary data.
  *
  * @interface
- * */
-function IPDFStream() {}
+ */
+function IPDFStream() {} // eslint-disable-line no-inner-declarations
 IPDFStream.prototype = {
   /**
    * Gets a reader for the entire PDF data.
@@ -117,7 +117,7 @@ IPDFStream.prototype = {
  *
  * @interface
  */
-function IPDFStreamReader() {}
+function IPDFStreamReader() {} // eslint-disable-line no-inner-declarations
 IPDFStreamReader.prototype = {
   /**
    * Gets a promise that is resolved when the headers and other metadata of
@@ -178,7 +178,7 @@ IPDFStreamReader.prototype = {
  *
  * @interface
  */
-function IPDFStreamRangeReader() {}
+function IPDFStreamRangeReader() {} // eslint-disable-line no-inner-declarations
 IPDFStreamRangeReader.prototype = {
   /**
    * Gets ability of the stream to progressively load binary data.
@@ -210,7 +210,7 @@ IPDFStreamRangeReader.prototype = {
    */
   onProgress: null,
 };
-//#endif
+}
 
 /** @implements {IPDFStream} */
 var PDFWorkerStream = (function PDFWorkerStreamClosure() {
@@ -479,6 +479,7 @@ var WorkerMessageHandler = {
     var WorkerTasks = [];
 
     var docId = docParams.docId;
+    var docBaseUrl = docParams.docBaseUrl;
     var workerHandlerName = docParams.docId + '_worker';
     var handler = new MessageHandler(workerHandlerName, docId, port);
 
@@ -543,7 +544,7 @@ var WorkerMessageHandler = {
       if (source.data) {
         try {
           pdfManager = new LocalPdfManager(docId, source.data, source.password,
-                                           evaluatorOptions);
+                                           evaluatorOptions, docBaseUrl);
           pdfManagerCapability.resolve(pdfManager);
         } catch (ex) {
           pdfManagerCapability.reject(ex);
@@ -592,7 +593,7 @@ var WorkerMessageHandler = {
           length: fullRequest.contentLength,
           disableAutoFetch: disableAutoFetch,
           rangeChunkSize: source.rangeChunkSize
-        }, evaluatorOptions);
+        }, evaluatorOptions, docBaseUrl);
         pdfManagerCapability.resolve(pdfManager);
         cancelXHRs = null;
       }).catch(function (reason) {
@@ -609,7 +610,7 @@ var WorkerMessageHandler = {
         // the data is array, instantiating directly from it
         try {
           pdfManager = new LocalPdfManager(docId, pdfFile, source.password,
-                                           evaluatorOptions);
+                                           evaluatorOptions, docBaseUrl);
           pdfManagerCapability.resolve(pdfManager);
         } catch (ex) {
           pdfManagerCapability.reject(ex);
@@ -745,14 +746,17 @@ var WorkerMessageHandler = {
       return pdfManager.getPage(data.pageIndex).then(function(page) {
         var rotatePromise = pdfManager.ensure(page, 'rotate');
         var refPromise = pdfManager.ensure(page, 'ref');
+        var userUnitPromise = pdfManager.ensure(page, 'userUnit');
         var viewPromise = pdfManager.ensure(page, 'view');
 
-        return Promise.all([rotatePromise, refPromise, viewPromise]).then(
-            function(results) {
+        return Promise.all([
+          rotatePromise, refPromise, userUnitPromise, viewPromise
+        ]).then(function(results) {
           return {
             rotate: results[0],
             ref: results[1],
-            view: results[2]
+            userUnit: results[2],
+            view: results[3]
           };
         });
       });
@@ -839,7 +843,8 @@ var WorkerMessageHandler = {
         var pageNum = pageIndex + 1;
         var start = Date.now();
         // Pre compile the pdf page and fetch the fonts/images.
-        page.getOperatorList(handler, task, data.intent).then(
+        page.getOperatorList(handler, task, data.intent,
+                             data.renderInteractiveForms).then(
             function(operatorList) {
           finishWorkerTask(task);
 
@@ -951,8 +956,8 @@ var WorkerMessageHandler = {
 };
 
 function initializeWorker() {
-//#if !MOZCENTRAL
-  if (!('console' in globalScope)) {
+  if ((typeof PDFJSDev === 'undefined' || !PDFJSDev.test('MOZCENTRAL')) &&
+      !('console' in globalScope)) {
     var consoleTimer = {};
 
     var workerConsole = {
@@ -990,7 +995,6 @@ function initializeWorker() {
 
     globalScope.console = workerConsole;
   }
-//#endif
 
   var handler = new MessageHandler('worker', 'main', self);
   WorkerMessageHandler.setup(handler, self);

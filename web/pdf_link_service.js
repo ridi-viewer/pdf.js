@@ -111,12 +111,26 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
 
         var getDestinationPage = function(destRef) {
           // dest array looks like that: <page-ref> </XYZ|/FitXXX> <args..>
-          var pageNumber = destRef instanceof Object ?
-            self._pagesRefCache[destRef.num + ' ' + destRef.gen + ' R'] :
-            (destRef + 1);
+          var pageNumber;
+          if (destRef instanceof Object) {
+            pageNumber = self._cachedPageNumber(destRef);
+          } else if ((destRef | 0) === destRef) { // Integer
+            pageNumber = destRef + 1;
+          } else {
+            console.error('PDFLinkService_getDestinationPagePromise: "' + destRef +
+                          '" is not a valid destination reference.');
+            if (ignoreErrorWithoutRejection) {
+              resolve();
+            } else {
+              reject(new Error('invalid destination'));
+            }
+            return;
+          }
           if (pageNumber) {
             if (pageNumber > self.pagesCount) {
               pageNumber = self.pagesCount;
+            } else if (pageNumber < 1) {
+              pageNumber = 1;
             }
             resolve(pageNumber, dest);
 
@@ -130,10 +144,16 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
             }
           } else {
             self.pdfDocument.getPageIndex(destRef).then(function (pageIndex) {
-              var pageNum = pageIndex + 1;
-              var cacheKey = destRef.num + ' ' + destRef.gen + ' R';
-              self._pagesRefCache[cacheKey] = pageNum;
+              self.cachePageRef(pageIndex + 1, destRef);
               getDestinationPage(destRef);
+            }).catch(function () {
+              console.error('PDFLinkService_getDestinationPagePromise: "' + destRef +
+                            '" is not a valid page reference.');
+              if (ignoreErrorWithoutRejection) {
+                resolve();
+              } else {
+                reject(new Error('invalid destination'));
+              }
             });
           }
         };
@@ -148,6 +168,8 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
         destinationPromise.then(function(destination) {
           dest = destination;
           if (!(destination instanceof Array)) {
+            console.error('PDFLinkService_getDestinationPagePromise: "' + destination +
+                          '" is not a valid destination array.');
             if (ignoreErrorWithoutRejection) {
               resolve();
             } else {
@@ -164,8 +186,14 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
      * @param dest - The PDF destination object.
      */
     navigateTo: function PDFLinkService_navigateTo(dest) {
+      var self = this;
       this.getDestinationPagePromise(dest)
-        .then(this.pdfViewer.scrollPageIntoView.bind(this.pdfViewer), RidiPdfViewer.onError); 
+        .then(function (pageNumber, destArray) {
+          self.pdfViewer.scrollPageIntoView({
+            pageNumber: pageNumber,
+            destArray: destArray,
+          });
+        }, RidiPdfViewer.onError);
     },
 
     /**
@@ -273,7 +301,11 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
           }
         }
         if (dest) {
-          this.pdfViewer.scrollPageIntoView(pageNumber || this.page, dest);
+          this.pdfViewer.scrollPageIntoView({
+            pageNumber: pageNumber || this.page,
+            destArray: dest,
+            allowNegativeOffset: true,
+          });
         } else if (pageNumber) {
           this.page = pageNumber; // simple page
         }
@@ -283,12 +315,24 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
             mode: params.pagemode
           });
         }
-      } else if (isPageNumber(hash)) { // Page number.
-        this.page = hash | 0;
       } else { // Named (or explicit) destination.
+        if ((typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) &&
+            isPageNumber(hash) && hash <= this.pagesCount) {
+          console.warn('PDFLinkService_setHash: specifying a page number ' +
+                       'directly after the hash symbol (#) is deprecated, ' +
+                       'please use the "#page=' + hash + '" form instead.');
+          this.page = hash | 0;
+        }
+
         dest = unescape(hash);
         try {
           dest = JSON.parse(dest);
+
+          if (!(dest instanceof Array)) {
+            // Avoid incorrectly rejecting a valid named destination, such as
+            // e.g. "4.3" or "true", because `JSON.parse` converted its type.
+            dest = dest.toString();
+          }
         } catch (ex) {}
 
         if (typeof dest === 'string' || isValidExplicitDestination(dest)) {
@@ -354,7 +398,12 @@ var PDFLinkService = (function PDFLinkServiceClosure() {
     cachePageRef: function PDFLinkService_cachePageRef(pageNum, pageRef) {
       var refStr = pageRef.num + ' ' + pageRef.gen + ' R';
       this._pagesRefCache[refStr] = pageNum;
-    }
+    },
+
+    _cachedPageNumber: function PDFLinkService_cachedPageNumber(pageRef) {
+      var refStr = pageRef.num + ' ' + pageRef.gen + ' R';
+      return (this._pagesRefCache && this._pagesRefCache[refStr]) || null;
+    },
   };
 
   function isValidExplicitDestination(dest) {

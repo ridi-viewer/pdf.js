@@ -296,7 +296,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
         for (j = 1, jj = contour.length; j < jj; j++) {
           if ((contour[j].flags & 1)) {
             lineTo(contour[j].x, contour[j].y);
-          } else if ((contour[j + 1].flags & 1)){
+          } else if ((contour[j + 1].flags & 1)) {
             quadraticCurveTo(contour[j].x, contour[j].y,
                              contour[j + 1].x, contour[j + 1].y);
             j++;
@@ -437,7 +437,7 @@ var FontRendererFactory = (function FontRendererFactoryClosure() {
                 x = xb; y = yb;
                 if (Math.abs(x - x0) > Math.abs(y - y0)) {
                   x += stack.shift();
-                } else  {
+                } else {
                   y += stack.shift();
                 }
                 bezierCurveTo(xa, ya, xb, yb, x, y);

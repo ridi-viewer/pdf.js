@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* jshint node:true */
+/* eslint-env node */
 /* globals target */
 
 'use strict';
@@ -20,7 +20,9 @@
 var fs = require('fs');
 var gulp = require('gulp');
 var gutil = require('gulp-util');
+var mkdirp = require('mkdirp');
 var rimraf = require('rimraf');
+var runSequence = require('run-sequence');
 var stream = require('stream');
 var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
@@ -28,6 +30,7 @@ var streamqueue = require('streamqueue');
 var zip = require('gulp-zip');
 
 var BUILD_DIR = 'build/';
+var JSDOC_DIR = 'jsdoc/';
 var L10N_DIR = 'l10n/';
 var TEST_DIR = 'test/';
 
@@ -127,25 +130,27 @@ function bundle(filename, outfilename, pathPrefix, initFiles, amdName, defines,
     return all[1].toUpperCase();
   });
 
-  // Avoiding double processing of the bundle file.
-  var templateContent = fs.readFileSync(filename).toString();
-  var tmpFile = outfilename + '.tmp';
-  fs.writeFileSync(tmpFile, templateContent.replace(
-    /\/\/#expand\s+__BUNDLE__\s*\n/, function (all) { return bundleContent; }));
-  bundleContent = null;
-  templateContent = null;
-
-  // This just preprocesses the empty pdf.js file, we don't actually want to
-  // preprocess everything yet since other build targets use this file.
-  builder.preprocess(tmpFile, outfilename,
-    builder.merge(defines, {
+  var p2 = require('./external/builder/preprocessor2.js');
+  var ctx = {
+    rootPath: __dirname,
+    saveComments: 'copyright',
+    defines: builder.merge(defines, {
       BUNDLE_VERSION: versionInfo.version,
       BUNDLE_BUILD: versionInfo.commit,
       BUNDLE_AMD_NAME: amdName,
       BUNDLE_JS_NAME: jsName,
       MAIN_FILE: isMainFile
-    }));
-  fs.unlinkSync(tmpFile);
+    })
+  };
+
+  var templateContent = fs.readFileSync(filename).toString();
+  templateContent = templateContent.replace(
+    /\/\/#expand\s+__BUNDLE__\s*\n/, function (all) { return bundleContent; });
+  bundleContent = null;
+
+  templateContent = p2.preprocessPDFJSCode(ctx, templateContent);
+  fs.writeFileSync(outfilename, templateContent);
+  templateContent = null;
 }
 
 function createBundle(defines) {
@@ -192,7 +197,7 @@ function createBundle(defines) {
       case 'mainfile':
         // 'buildnumber' shall create BUILD_DIR for us
         tmpFile = BUILD_DIR + '~' + mainOutputName + '.tmp';
-        bundle('src/pdf.js', tmpFile, 'src/', mainFiles,  mainAMDName,
+        bundle('src/pdf.js', tmpFile, 'src/', mainFiles, mainAMDName,
           defines, true, versionJSON);
         this.push(new gutil.File({
           cwd: '',
@@ -246,11 +251,11 @@ function createWebBundle(defines) {
     template = 'web/viewer.js';
     files = ['app.js'];
     if (defines.FIREFOX || defines.MOZCENTRAL) {
-      files.push('firefoxcom.js');
+      files.push('firefoxcom.js', 'firefox_print_service.js');
     } else if (defines.CHROME) {
-      files.push('chromecom.js', 'mozPrintCallback_polyfill.js');
+      files.push('chromecom.js', 'pdf_print_service.js');
     } else if (defines.GENERIC) {
-      files.push('mozPrintCallback_polyfill.js');
+      files.push('pdf_print_service.js');
     }
   }
 
@@ -335,6 +340,13 @@ gulp.task('default', function() {
   tasks.forEach(function (taskName) {
     console.log('  ' + taskName);
   });
+});
+
+gulp.task('extension', function (done) {
+  console.log();
+  console.log('### Building extensions');
+
+  runSequence('locale', 'firefox', 'chromium', done);
 });
 
 gulp.task('buildnumber', function (done) {
@@ -425,6 +437,28 @@ gulp.task('bundle', ['buildnumber'], function () {
   return createBundle(DEFINES).pipe(gulp.dest(BUILD_DIR));
 });
 
+gulp.task('jsdoc', function (done) {
+  console.log();
+  console.log('### Generating documentation (JSDoc)');
+
+  var JSDOC_FILES = [
+    'src/doc_helper.js',
+    'src/display/api.js',
+    'src/display/global.js',
+    'src/shared/util.js',
+    'src/core/annotation.js'
+  ];
+
+  var directory = BUILD_DIR + JSDOC_DIR;
+  rimraf(directory, function () {
+    mkdirp(directory, function () {
+      var command = '"node_modules/.bin/jsdoc" -d ' + directory + ' ' +
+                    JSDOC_FILES.join(' ');
+      exec(command, done);
+    });
+  });
+});
+
 gulp.task('publish', ['generic'], function (done) {
   var version = JSON.parse(
     fs.readFileSync(BUILD_DIR + 'version.json').toString()).version;
@@ -497,23 +531,25 @@ gulp.task('botmakeref', function (done) {
   });
 });
 
-gulp.task('lint', function (done) {
+var doLint = function doLint(done, onlyForViewer) {
   console.log();
-  console.log('### Linting JS files');
+  console.log('### Linting JS files' + (onlyForViewer ? ' (Note : only files in "web"!)' : ''));
 
-  // Lint the Firefox specific *.jsm files.
-  var options = ['node_modules/jshint/bin/jshint', '--extra-ext', '.jsm', '.'];
-  var jshintProcess = spawn('node', options, {stdio: 'inherit'});
-  jshintProcess.on('close', function (code) {
+  // Ensure that we lint the Firefox specific *.jsm files too.
+  var options = ['node_modules/eslint/bin/eslint', '--ext', '.js,.jsm', '.'];
+  var esLintProcess = spawn('node', options, {stdio: 'inherit'});
+  esLintProcess.on('close', function (code) {
     if (code !== 0) {
-      done(new Error('jshint failed.'));
+      done(new Error('ESLint failed.'));
       return;
     }
 
     console.log();
     console.log('### Checking UMD dependencies');
     var umd = require('./external/umdutils/verifier.js');
-    if (!umd.validateFiles({'pdfjs': './src', 'pdfjs-web': './web'})) {
+    var filesToValidate =
+      onlyForViewer ? {'pdfjs-web': './web'} : {'pdfjs': './src', 'pdfjs-web': './web'};
+    if (!umd.validateFiles(filesToValidate)) {
       done(new Error('UMD check failed.'));
       return;
     }
@@ -531,42 +567,14 @@ gulp.task('lint', function (done) {
     console.log('files checked, no errors found');
     done();
   });
+};
+
+gulp.task('lint', function (done) {
+  doLint(done);
 });
 
 gulp.task('lintviewer', function (done) {
-  console.log();
-  console.log('### Linting JS files (Note : only files in "web"!)');
-
-  // Lint the Firefox specific *.jsm files.
-  var options = ['node_modules/jshint/bin/jshint', '--extra-ext', '.jsm', 'web'];
-  var jshintProcess = spawn('node', options, {stdio: 'inherit'});
-  jshintProcess.on('close', function (code) {
-    if (code !== 0) {
-      done(new Error('jshint failed.'));
-      return;
-    }
-
-    console.log();
-    console.log('### Checking UMD dependencies');
-    var umd = require('./external/umdutils/verifier.js');
-    if (!umd.validateFiles({'pdfjs-web': './web'})) {
-      done(new Error('UMD check failed.'));
-      return;
-    }
-
-    console.log();
-    console.log('### Checking supplemental files');
-
-    if (!checkChromePreferencesFile(
-          'extensions/chromium/preferences_schema.json',
-          'web/default_preferences.json')) {
-      done(new Error('chromium/preferences_schema is not in sync.'));
-      return;
-    }
-
-    console.log('files checked, no errors found');
-    done();
-  });
+  doLint(done, true);
 });
 
 gulp.task('server', function (done) {

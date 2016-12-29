@@ -3,6 +3,7 @@
 'use strict';
 
 var RidiPdfViewer = function() {
+  /* eslint-disable no-new */
   var self = this;
   new QWebChannel(qt.webChannelTransport, function(channel) {
     self.nativeViewer = channel.objects.nativeViewer;
@@ -42,7 +43,7 @@ RidiPdfViewer.prototype.onErrorWithPopup = function(err) {
 
 RidiPdfViewer.prototype.optimizePageCacheForWindows = function() {
   var pdfViewer = PDFViewerApplication.pdfViewer;
-  pdfViewer.defaultCacheSize = 35; 
+  pdfViewer.defaultCacheSize = 35;
   pdfViewer.defaultVerticalTolerance = 500;
   pdfViewer.defaultAdjacentPagesToDraw = 2;
 };
@@ -100,4 +101,3 @@ RidiPdfViewer.prototype.setTocFromPdfOutline = function(outline) {
 };
 
 window.RidiPdfViewer = new RidiPdfViewer();
-

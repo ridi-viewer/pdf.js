@@ -1,15 +1,15 @@
 gulp clean &&
 (if [[ $1 == "-f" ]]
 then
-  gulp generic
-else
-  gulp genericviewer
-fi) &&
-(if [[ $1 == "-f" ]]
-then
   gulp lint
 else
   gulp lintviewer
+fi) &&
+(if [[ $1 == "-f" ]]
+then
+  gulp generic
+else
+  gulp genericviewer
 fi) &&
 rsync -avh --delete build/generic/* ../res/pdf-viewer/ &&
 rsync -avh --delete ridi_modules ../res/pdf-viewer/ &&

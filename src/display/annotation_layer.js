@@ -45,6 +45,8 @@ var getDefaultSetting = displayDOMUtils.getDefaultSetting;
  * @property {PageViewport} viewport
  * @property {IPDFLinkService} linkService
  * @property {DownloadManager} downloadManager
+ * @property {string} imageResourcesPath
+ * @property {boolean} renderInteractiveForms
  */
 
 /**
@@ -69,6 +71,23 @@ AnnotationElementFactory.prototype =
         return new TextAnnotationElement(parameters);
 
       case AnnotationType.WIDGET:
+        var fieldType = parameters.data.fieldType;
+
+        switch (fieldType) {
+          case 'Tx':
+            return new TextWidgetAnnotationElement(parameters);
+          case 'Btn':
+            if (parameters.data.radioButton) {
+              return new RadioButtonWidgetAnnotationElement(parameters);
+            } else if (parameters.data.checkBox) {
+              return new CheckboxWidgetAnnotationElement(parameters);
+            } else {
+              warn('Unimplemented button widget annotation: pushbutton');
+            }
+            break;
+          case 'Ch':
+            return new ChoiceWidgetAnnotationElement(parameters);
+        }
         return new WidgetAnnotationElement(parameters);
 
       case AnnotationType.POPUP:
@@ -109,6 +128,7 @@ var AnnotationElement = (function AnnotationElementClosure() {
     this.linkService = parameters.linkService;
     this.downloadManager = parameters.downloadManager;
     this.imageResourcesPath = parameters.imageResourcesPath;
+    this.renderInteractiveForms = parameters.renderInteractiveForms;
 
     if (isRenderable) {
       this.container = this._createContainer();
@@ -288,7 +308,7 @@ var LinkAnnotationElement = (function LinkAnnotationElementClosure() {
         if (this.data.action) {
           this._bindNamedAction(link, this.data.action);
         } else {
-          this._bindLink(link, (this.data.dest || null));
+          this._bindLink(link, this.data.dest);
         }
       }
 
@@ -391,9 +411,7 @@ var TextAnnotationElement = (function TextAnnotationElementClosure() {
  * @alias WidgetAnnotationElement
  */
 var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
-  function WidgetAnnotationElement(parameters) {
-    var isRenderable = !parameters.data.hasAppearance &&
-                       !!parameters.data.fieldValue;
+  function WidgetAnnotationElement(parameters, isRenderable) {
     AnnotationElement.call(this, parameters, isRenderable);
   }
 
@@ -406,18 +424,84 @@ var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
      * @returns {HTMLSectionElement}
      */
     render: function WidgetAnnotationElement_render() {
-      var content = document.createElement('div');
-      content.textContent = this.data.fieldValue;
-      var textAlignment = this.data.textAlignment;
-      content.style.textAlign = ['left', 'center', 'right'][textAlignment];
-      content.style.verticalAlign = 'middle';
-      content.style.display = 'table-cell';
+      // Show only the container for unsupported field types.
+      return this.container;
+    }
+  });
 
-      var font = (this.data.fontRefName ?
-        this.page.commonObjs.getData(this.data.fontRefName) : null);
-      this._setTextStyle(content, font);
+  return WidgetAnnotationElement;
+})();
 
-      this.container.appendChild(content);
+/**
+ * @class
+ * @alias TextWidgetAnnotationElement
+ */
+var TextWidgetAnnotationElement = (
+    function TextWidgetAnnotationElementClosure() {
+  var TEXT_ALIGNMENT = ['left', 'center', 'right'];
+
+  function TextWidgetAnnotationElement(parameters) {
+    var isRenderable = parameters.renderInteractiveForms ||
+      (!parameters.data.hasAppearance && !!parameters.data.fieldValue);
+    WidgetAnnotationElement.call(this, parameters, isRenderable);
+  }
+
+  Util.inherit(TextWidgetAnnotationElement, WidgetAnnotationElement, {
+    /**
+     * Render the text widget annotation's HTML element in the empty container.
+     *
+     * @public
+     * @memberof TextWidgetAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function TextWidgetAnnotationElement_render() {
+      this.container.className = 'textWidgetAnnotation';
+
+      var element = null;
+      if (this.renderInteractiveForms) {
+        // NOTE: We cannot set the values using `element.value` below, since it
+        //       prevents the AnnotationLayer rasterizer in `test/driver.js`
+        //       from parsing the elements correctly for the reference tests.
+        if (this.data.multiLine) {
+          element = document.createElement('textarea');
+          element.textContent = this.data.fieldValue;
+        } else {
+          element = document.createElement('input');
+          element.type = 'text';
+          element.setAttribute('value', this.data.fieldValue);
+        }
+
+        element.disabled = this.data.readOnly;
+
+        if (this.data.maxLen !== null) {
+          element.maxLength = this.data.maxLen;
+        }
+
+        if (this.data.comb) {
+          var fieldWidth = this.data.rect[2] - this.data.rect[0];
+          var combWidth = fieldWidth / this.data.maxLen;
+
+          element.classList.add('comb');
+          element.style.letterSpacing = 'calc(' + combWidth + 'px - 1ch)';
+        }
+      } else {
+        element = document.createElement('div');
+        element.textContent = this.data.fieldValue;
+        element.style.verticalAlign = 'middle';
+        element.style.display = 'table-cell';
+
+        var font = null;
+        if (this.data.fontRefName) {
+          font = this.page.commonObjs.getData(this.data.fontRefName);
+        }
+        this._setTextStyle(element, font);
+      }
+
+      if (this.data.textAlignment !== null) {
+        element.style.textAlign = TEXT_ALIGNMENT[this.data.textAlignment];
+      }
+
+      this.container.appendChild(element);
       return this.container;
     },
 
@@ -427,14 +511,14 @@ var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
      * @private
      * @param {HTMLDivElement} element
      * @param {Object} font
-     * @memberof WidgetAnnotationElement
+     * @memberof TextWidgetAnnotationElement
      */
     _setTextStyle:
-        function WidgetAnnotationElement_setTextStyle(element, font) {
+        function TextWidgetAnnotationElement_setTextStyle(element, font) {
       // TODO: This duplicates some of the logic in CanvasGraphics.setFont().
       var style = element.style;
       style.fontSize = this.data.fontSize + 'px';
-      style.direction = (this.data.fontDirection < 0 ? 'rtl': 'ltr');
+      style.direction = (this.data.fontDirection < 0 ? 'rtl' : 'ltr');
 
       if (!font) {
         return;
@@ -452,7 +536,142 @@ var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
     }
   });
 
-  return WidgetAnnotationElement;
+  return TextWidgetAnnotationElement;
+})();
+
+/**
+ * @class
+ * @alias CheckboxWidgetAnnotationElement
+ */
+var CheckboxWidgetAnnotationElement =
+    (function CheckboxWidgetAnnotationElementClosure() {
+  function CheckboxWidgetAnnotationElement(parameters) {
+    WidgetAnnotationElement.call(this, parameters,
+                                 parameters.renderInteractiveForms);
+  }
+
+  Util.inherit(CheckboxWidgetAnnotationElement, WidgetAnnotationElement, {
+    /**
+     * Render the checkbox widget annotation's HTML element
+     * in the empty container.
+     *
+     * @public
+     * @memberof CheckboxWidgetAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function CheckboxWidgetAnnotationElement_render() {
+      this.container.className = 'buttonWidgetAnnotation checkBox';
+
+      var element = document.createElement('input');
+      element.disabled = this.data.readOnly;
+      element.type = 'checkbox';
+      if (this.data.fieldValue && this.data.fieldValue !== 'Off') {
+        element.setAttribute('checked', true);
+      }
+
+      this.container.appendChild(element);
+      return this.container;
+    }
+  });
+
+  return CheckboxWidgetAnnotationElement;
+})();
+
+/**
+ * @class
+ * @alias RadioButtonWidgetAnnotationElement
+ */
+var RadioButtonWidgetAnnotationElement =
+    (function RadioButtonWidgetAnnotationElementClosure() {
+  function RadioButtonWidgetAnnotationElement(parameters) {
+    WidgetAnnotationElement.call(this, parameters,
+                                 parameters.renderInteractiveForms);
+  }
+
+  Util.inherit(RadioButtonWidgetAnnotationElement, WidgetAnnotationElement, {
+    /**
+     * Render the radio button widget annotation's HTML element
+     * in the empty container.
+     *
+     * @public
+     * @memberof RadioButtonWidgetAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function RadioButtonWidgetAnnotationElement_render() {
+      this.container.className = 'buttonWidgetAnnotation radioButton';
+
+      var element = document.createElement('input');
+      element.disabled = this.data.readOnly;
+      element.type = 'radio';
+      element.name = this.data.fieldName;
+      if (this.data.fieldValue === this.data.buttonValue) {
+        element.setAttribute('checked', true);
+      }
+
+      this.container.appendChild(element);
+      return this.container;
+    }
+  });
+
+  return RadioButtonWidgetAnnotationElement;
+})();
+
+ /**
+ * @class
+ * @alias ChoiceWidgetAnnotationElement
+ */
+var ChoiceWidgetAnnotationElement = (
+    function ChoiceWidgetAnnotationElementClosure() {
+  function ChoiceWidgetAnnotationElement(parameters) {
+    WidgetAnnotationElement.call(this, parameters,
+                                 parameters.renderInteractiveForms);
+  }
+
+  Util.inherit(ChoiceWidgetAnnotationElement, WidgetAnnotationElement, {
+    /**
+     * Render the choice widget annotation's HTML element in the empty
+     * container.
+     *
+     * @public
+     * @memberof ChoiceWidgetAnnotationElement
+     * @returns {HTMLSectionElement}
+     */
+    render: function ChoiceWidgetAnnotationElement_render() {
+      this.container.className = 'choiceWidgetAnnotation';
+
+      var selectElement = document.createElement('select');
+      selectElement.disabled = this.data.readOnly;
+
+      if (!this.data.combo) {
+        // List boxes have a size and (optionally) multiple selection.
+        selectElement.size = this.data.options.length;
+
+        if (this.data.multiSelect) {
+          selectElement.multiple = true;
+        }
+      }
+
+      // Insert the options into the choice field.
+      for (var i = 0, ii = this.data.options.length; i < ii; i++) {
+        var option = this.data.options[i];
+
+        var optionElement = document.createElement('option');
+        optionElement.textContent = option.displayValue;
+        optionElement.value = option.exportValue;
+
+        if (this.data.fieldValue.indexOf(option.displayValue) >= 0) {
+          optionElement.setAttribute('selected', true);
+        }
+
+        selectElement.appendChild(optionElement);
+      }
+
+      this.container.appendChild(selectElement);
+      return this.container;
+    }
+  });
+
+  return ChoiceWidgetAnnotationElement;
 })();
 
 /**
@@ -844,6 +1063,7 @@ var FileAttachmentAnnotationElement = (
  * @property {PDFPage} page
  * @property {IPDFLinkService} linkService
  * @property {string} imageResourcesPath
+ * @property {boolean} renderInteractiveForms
  */
 
 /**
@@ -876,7 +1096,8 @@ var AnnotationLayer = (function AnnotationLayerClosure() {
           linkService: parameters.linkService,
           downloadManager: parameters.downloadManager,
           imageResourcesPath: parameters.imageResourcesPath ||
-                              getDefaultSetting('imageResourcesPath')
+                              getDefaultSetting('imageResourcesPath'),
+          renderInteractiveForms: parameters.renderInteractiveForms || false,
         };
         var element = annotationElementFactory.create(properties);
         if (element.isRenderable) {

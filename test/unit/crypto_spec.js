@@ -1,7 +1,7 @@
-/* globals expect, it, describe, calculateMD5, ARCFourCipher, Name, beforeAll,
-           CipherTransformFactory, calculateSHA256, calculateSHA384, afterAll,
-           calculateSHA512, AES128Cipher, AES256Cipher, PDF17, PDF20, Dict,
-           PasswordException, PasswordResponses, stringToBytes */
+/* globals stringToBytes, calculateMD5, ARCFourCipher, calculateSHA256,
+           calculateSHA384, calculateSHA512, AES128Cipher, AES256Cipher, PDF17,
+           PDF20, Dict, CipherTransformFactory, PasswordException,
+           PasswordResponses, Name */
 
 'use strict';
 
@@ -250,7 +250,7 @@ describe('crypto', function() {
         key = hex2binary('000102030405060708090a0b0c0d0e0f');
         iv = hex2binary('00000000000000000000000000000000');
         cipher = new AES128Cipher(key);
-        result = cipher.encrypt(input,iv);
+        result = cipher.encrypt(input, iv);
         expected = hex2binary('69c4e0d86a7b0430d8cdb78070b4c55a');
         expect(result).toEqual(expected);
       });
@@ -279,7 +279,7 @@ describe('crypto', function() {
                          '191a1b1c1d1e1f');
         iv = hex2binary('00000000000000000000000000000000');
         cipher = new AES256Cipher(key);
-        result = cipher.encrypt(input,iv);
+        result = cipher.encrypt(input, iv);
         expected = hex2binary('8ea2b7ca516745bfeafc49904b496089');
         expect(result).toEqual(expected);
       });
@@ -293,7 +293,7 @@ describe('crypto', function() {
                          '191a1b1c1d1e1f');
         iv = hex2binary('00000000000000000000000000000000');
         cipher = new AES256Cipher(key);
-        result = cipher.decryptBlock(input,false,iv);
+        result = cipher.decryptBlock(input, false, iv);
         expected = hex2binary('00112233445566778899aabbccddeeff');
         expect(result).toEqual(expected);
       });
@@ -304,7 +304,7 @@ describe('crypto', function() {
         key = hex2binary('000102030405060708090a0b0c0d0e0f101112131415161718' +
                          '191a1b1c1d1e1f');
         cipher = new AES256Cipher(key);
-        result = cipher.decryptBlock(input,false);
+        result = cipher.decryptBlock(input, false);
         expected = hex2binary('00112233445566778899aabbccddeeff');
         expect(result).toEqual(expected);
       });
@@ -317,11 +317,10 @@ describe('crypto', function() {
       alg = new PDF17();
       password = new Uint8Array([117, 115, 101, 114]);
       userValidation = new Uint8Array([117, 169, 4, 32, 159, 101, 22, 220]);
-      userPassword = new Uint8Array([
-                                      131, 242, 143, 160, 87, 2, 138, 134, 79,
-                                      253, 189, 173, 224, 73, 144, 241, 190, 81,
-                                      197, 15, 249, 105, 145, 151, 15, 194, 65,
-                                      3, 1, 126, 187, 221]);
+      userPassword = new Uint8Array([131, 242, 143, 160, 87, 2, 138, 134, 79,
+                                     253, 189, 173, 224, 73, 144, 241, 190, 81,
+                                     197, 15, 249, 105, 145, 151, 15, 194, 65,
+                                     3, 1, 126, 187, 221]);
       result = alg.checkUserPassword(password, userValidation, userPassword);
       expect(result).toEqual(true);
     });
@@ -483,6 +482,7 @@ describe('CipherTransformFactory', function() {
 
   function ensurePasswordNeeded(done, dict, fileId, password) {
     try {
+      // eslint-disable-next-line no-new
       new CipherTransformFactory(dict, fileId, password);
     } catch (ex) {
       expect(ex instanceof PasswordException).toEqual(true);
@@ -496,6 +496,7 @@ describe('CipherTransformFactory', function() {
 
   function ensurePasswordIncorrect(done, dict, fileId, password) {
     try {
+      // eslint-disable-next-line no-new
       new CipherTransformFactory(dict, fileId, password);
     } catch (ex) {
       expect(ex instanceof PasswordException).toEqual(true);

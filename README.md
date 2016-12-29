@@ -34,7 +34,7 @@ irc.mozilla.org.
 
 ### Online demo
 
-+ http://mozilla.github.io/pdf.js/web/viewer.html
++ https://mozilla.github.io/pdf.js/web/viewer.html
 
 ### Browser Extensions
 
@@ -51,9 +51,13 @@ directory `build/chromium`.
 First, install Node.js via the [official package](http://nodejs.org) or via [nvm](https://github.com/creationix/nvm).
 
 Next,
+> $ npm install -g npm@latest
+
 > $ npm install -g gulp-cli
 
 > $ npm install
+  
+> $ npm update
 
 > $ ./get_viewer.sh
 
