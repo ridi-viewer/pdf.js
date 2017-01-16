@@ -194,13 +194,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
   };
 
   function PartialEvaluator(pdfManager, xref, handler, pageIndex,
-                            uniquePrefix, idCounters, fontCache, options) {
+                            idFactory, fontCache, options) {
     this.pdfManager = pdfManager;
     this.xref = xref;
     this.handler = handler;
     this.pageIndex = pageIndex;
-    this.uniquePrefix = uniquePrefix;
-    this.idCounters = idCounters;
+    this.idFactory = idFactory;
     this.fontCache = fontCache;
     this.options = options || DefaultPartialEvaluatorOptions;
   }
@@ -416,8 +415,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       // If there is no imageMask, create the PDFImage and a lot
       // of image processing can be done here.
-      var uniquePrefix = (this.uniquePrefix || '');
-      var objId = 'img_' + uniquePrefix + (++this.idCounters.obj);
+      var objId = 'img_' + this.idFactory.createObjId();
       operatorList.addDependency(objId);
       args = [objId, w, h];
 
@@ -758,7 +756,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         this.fontCache.put(fontRef, fontCapability.promise);
       } else {
         if (!fontID) {
-          fontID = (this.uniquePrefix || 'F_') + (++this.idCounters.obj);
+          fontID = this.idFactory.createObjId();
         }
         this.fontCache.put('id_' + fontID, fontCapability.promise);
       }
@@ -848,9 +846,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                                          this.handler);
           operatorList.addOp(fn, pattern.getIR());
           return Promise.resolve();
-        } else {
-          return Promise.reject('Unknown PatternType: ' + typeNum);
         }
+        return Promise.reject('Unknown PatternType: ' + typeNum);
       }
       // TODO shall we fail here?
       operatorList.addOp(fn, args);
@@ -2214,11 +2211,19 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               hash.update(entry.name);
             } else if (isRef(entry)) {
               hash.update(entry.toString());
-            } else if (isArray(entry)) { // 'Differences' entry.
-              // Ideally we should check the contents of the array, but to avoid
-              // parsing it here and then again in |extractDataStructures|,
-              // we only use the array length for now (fixes bug1157493.pdf).
-              hash.update(entry.length.toString());
+            } else if (isArray(entry)) {
+              // 'Differences' array (fixes bug1157493.pdf).
+              var diffLength = entry.length, diffBuf = new Array(diffLength);
+
+              for (var j = 0; j < diffLength; j++) {
+                var diffEntry = entry[j];
+                if (isName(diffEntry)) {
+                  diffBuf[j] = diffEntry.name;
+                } else if (isNum(diffEntry) || isRef(diffEntry)) {
+                  diffBuf[j] = diffEntry.toString();
+                }
+              }
+              hash.update(diffBuf.join());
             }
           }
         }
@@ -2919,18 +2924,17 @@ var EvaluatorPreprocessor = (function EvaluatorPreprocessorClosure() {
           operation.fn = fn;
           operation.args = args;
           return true;
-        } else {
-          if (isEOF(obj)) {
-            return false; // no more commands
+        }
+        if (isEOF(obj)) {
+          return false; // no more commands
+        }
+        // argument
+        if (obj !== null) {
+          if (args === null) {
+            args = [];
           }
-          // argument
-          if (obj !== null) {
-            if (args === null) {
-              args = [];
-            }
-            args.push(obj);
-            assert(args.length <= 33, 'Too many arguments');
-          }
+          args.push(obj);
+          assert(args.length <= 33, 'Too many arguments');
         }
       }
     },

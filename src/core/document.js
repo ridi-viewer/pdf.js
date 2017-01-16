@@ -78,12 +78,18 @@ var Page = (function PageClosure() {
     this.xref = xref;
     this.ref = ref;
     this.fontCache = fontCache;
-    this.uniquePrefix = 'p' + this.pageIndex + '_';
-    this.idCounters = {
-      obj: 0
-    };
     this.evaluatorOptions = pdfManager.evaluatorOptions;
     this.resourcesPromise = null;
+
+    var uniquePrefix = 'p' + this.pageIndex + '_';
+    var idCounters = {
+      obj: 0,
+    };
+    this.idFactory = {
+      createObjId: function () {
+        return uniquePrefix + (++idCounters.obj);
+      },
+    };
   }
 
   Page.prototype = {
@@ -240,8 +246,7 @@ var Page = (function PageClosure() {
 
       var partialEvaluator = new PartialEvaluator(pdfManager, this.xref,
                                                   handler, this.pageIndex,
-                                                  this.uniquePrefix,
-                                                  this.idCounters,
+                                                  this.idFactory,
                                                   this.fontCache,
                                                   this.evaluatorOptions);
 
@@ -308,8 +313,7 @@ var Page = (function PageClosure() {
         var contentStream = data[0];
         var partialEvaluator = new PartialEvaluator(pdfManager, self.xref,
                                                     handler, self.pageIndex,
-                                                    self.uniquePrefix,
-                                                    self.idCounters,
+                                                    self.idFactory,
                                                     self.fontCache,
                                                     self.evaluatorOptions);
 
@@ -345,8 +349,7 @@ var Page = (function PageClosure() {
         var annotationRef = annotationRefs[i];
         var annotation = annotationFactory.create(this.xref, annotationRef,
                                                   this.pdfManager,
-                                                  this.uniquePrefix,
-                                                  this.idCounters);
+                                                  this.idFactory);
         if (annotation) {
           annotations.push(annotation);
         }
@@ -370,22 +373,20 @@ var PDFDocument = (function PDFDocumentClosure() {
   var EMPTY_FINGERPRINT = '\x00\x00\x00\x00\x00\x00\x00' +
     '\x00\x00\x00\x00\x00\x00\x00\x00\x00';
 
-  function PDFDocument(pdfManager, arg, password) {
+  function PDFDocument(pdfManager, arg) {
+    var stream;
     if (isStream(arg)) {
-      init.call(this, pdfManager, arg, password);
+      stream = arg;
     } else if (isArrayBuffer(arg)) {
-      init.call(this, pdfManager, new Stream(arg), password);
+      stream = new Stream(arg);
     } else {
       error('PDFDocument: Unknown argument type');
     }
-  }
-
-  function init(pdfManager, stream, password) {
     assert(stream.length > 0, 'stream must have data');
+
     this.pdfManager = pdfManager;
     this.stream = stream;
-    var xref = new XRef(this.stream, password, pdfManager);
-    this.xref = xref;
+    this.xref = new XRef(stream, pdfManager);
   }
 
   function find(stream, needle, limit, backwards) {
