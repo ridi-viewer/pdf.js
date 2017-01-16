@@ -166,7 +166,6 @@ var PDFPageView = (function PDFPageViewClosure() {
       }
 
       this._twoPageMode = val;
-      this.reset();
     },
 
     get containerHasAnEmptyPageAfterCover() {
@@ -239,6 +238,7 @@ var PDFPageView = (function PDFPageViewClosure() {
         delete this.svg;
       }
       if (!currentZoomLayerNode) {
+        this.zoomLayer = null;
         this.paintedViewport = null;
       }
 
@@ -658,7 +658,6 @@ var PDFPageView = (function PDFPageViewClosure() {
       };
       var renderTask = this.pdfPage.render(renderContext);
       renderTask.onContinue = function (cont) {
-        showCanvas();
         if (result.onRenderContinue) {
           result.onRenderContinue(cont);
         } else {
@@ -672,7 +671,6 @@ var PDFPageView = (function PDFPageViewClosure() {
           resolveRenderPromise(undefined);
         },
         function pdfPageRenderError(error) {
-          showCanvas();
           rejectRenderPromise(error);
         }
       );

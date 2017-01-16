@@ -339,6 +339,7 @@ var PDFViewerApplication = {
         linkService: pdfLinkService,
         downloadManager: downloadManager,
         renderer: self.viewerPrefs['renderer'],
+        removePageBorders: true,
         enhanceTextSelection: self.viewerPrefs['enhanceTextSelection'],
         renderInteractiveForms: self.viewerPrefs['renderInteractiveForms'],
       });
@@ -401,15 +402,13 @@ var PDFViewerApplication = {
       self.secondaryToolbar =
         new SecondaryToolbar(appConfig.secondaryToolbar, container, eventBus);
 
-      if (self.supportsFullscreen) {
-        self.pdfPresentationMode = new PDFPresentationMode({
-          container: container,
-          viewer: viewer,
-          pdfViewer: self.pdfViewer,
-          eventBus: eventBus,
-          contextMenuItems: appConfig.fullscreen
-        });
-      }
+      self.pdfPresentationMode = new PDFPresentationMode({
+        container: container,
+        viewer: viewer,
+        pdfViewer: self.pdfViewer,
+        eventBus: eventBus,
+        contextMenuItems: appConfig.fullscreen
+      });
 
       self.passwordPrompt = new PasswordPrompt(appConfig.passwordOverlay);
 

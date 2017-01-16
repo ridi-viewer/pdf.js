@@ -125,7 +125,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
   NativeImageDecoder.prototype = {
     canDecode: function (image) {
       return image instanceof JpxStream || (image instanceof JpegStream &&
-             NativeImageDecoder.isDecodable(image, this.xref, this.resources));
+             NativeImageDecoder.isDecodableByBrowser(image, this.xref, this.resources));
     },
     decode: function (image) {
       // For natively supported formats, send them to the main thread for decoding.
@@ -182,11 +182,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     return (cs.name === 'DeviceGray' || cs.name === 'DeviceRGB') &&
            cs.isDefaultDecode(dict.getArray('Decode', 'D'));
   };
-  /**
-   * Checks if the image can be decoded by the browser.
-   */
-  NativeImageDecoder.isDecodable =
-      function NativeImageDecoder_isDecodable(image, xref, res) {
+  NativeImageDecoder.isDecodableByBrowser =
+      function NativeImageDecoder_isDecodableByBrowser(image, xref, res) {
     var dict = image.dict;
     if (dict.has('DecodeParms') || dict.has('DP')) {
       return false;
