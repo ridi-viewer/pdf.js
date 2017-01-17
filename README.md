@@ -74,40 +74,6 @@ be loaded by `pdf.js`. If you want to support more browsers than Firefox you'll 
 to include `compatibility.js` from `build/generic/web/`. The PDF.js files are large and
 should be minified for production.
 
-## Working with git-subtree
-
-----------
-
-### **IMPORTANT!!**
-
-Even the method below may not work. Then get the changes from the root repository **manually**. (By copying files, rsync, and so on.)
-
---------
-
-Generally this repository should be added as a submoudle or subtree to the other repository (referred to as 'the main repository' below).
-
-However (at this point of time) using *'git subtree push'* will **RUIN** this repository with all history of the main repository.
-  
-  - Using the '--squash' option doesn't seem to have any effect - why?
-
-Add this repository as 'pdf-origin' (or other names you might want) in the main repository.
-
-Then, create a local branch.
-
-> git checkout pdf-origin/ridi-master
-
-> git checkout -b ridi-master
-
-Then,
-
-> git merge --squash -s subtree develop **_(Or any other branch in the main repository you want to merge)_**
-
-> git push pdf-origin ridi-master
-
-Then checkout back to the branch you were working at.
-
-*Note : This process is time-consuming, so you might want to do this only upon each merger on the develop branch (not on every commit you make at the main repository).
-
 ## Questions
 
 Check out our FAQs and get answers to common questions:
