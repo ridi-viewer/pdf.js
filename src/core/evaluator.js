@@ -144,24 +144,22 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             dict.set('NumComps', message.numComps);
             dict.set('BitsPerComponent', message.bitsPerComponent);
             return new Stream(data, 0, data.length, dict);
-          } else {
-            return new JpxStream(new Stream(data, 0, data.length, dict), data.length, dict);
           }
-        });
-      } else {
-        // JPEGs
-        var colorSpace = dict.get('ColorSpace', 'CS');
-        colorSpace = ColorSpace.parse(colorSpace, this.xref, this.resources);
-        numComps = colorSpace.numComps;
-
-        decodePromise = this.handler.sendWithPromise('JpegDecode',
-            [image.getIR(this.forceDataSchema), numComps]);
-
-        return decodePromise.then(function (message) {
-          var data = message.data;
-          return new Stream(data, 0, data.length, dict);
+          return new JpxStream(new Stream(data, 0, data.length, dict), data.length, dict);
         });
       }
+      // JPEGs
+      var colorSpace = dict.get('ColorSpace', 'CS');
+      colorSpace = ColorSpace.parse(colorSpace, this.xref, this.resources);
+      numComps = colorSpace.numComps;
+
+      decodePromise = this.handler.sendWithPromise('JpegDecode',
+          [image.getIR(this.forceDataSchema), numComps]);
+
+      return decodePromise.then(function (message) {
+        var data = message.data;
+        return new Stream(data, 0, data.length, dict);
+      });
     }
   };
   /**

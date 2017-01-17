@@ -303,10 +303,9 @@ var PDFViewer = (function pdfViewer() {
         // Page Number will proceed like : 1, 3, 5, 7, 9 ..
         // Even number pages will be displayed next to the odd number pages.
         return pageNumber - ((pageNumber % 2 === 0) ? 1 : 0);
-      } else {
-        // 1, 2, 4, 6, 8, 10 ..
-        return (pageNumber === 1) ? 1 : (pageNumber - ((pageNumber % 2 === 0) ? 0 : 1));
       }
+      // 1, 2, 4, 6, 8, 10 ..
+      return (pageNumber === 1) ? 1 : (pageNumber - ((pageNumber % 2 === 0) ? 0 : 1));
     },
 
     get pageSwitchUnit() {

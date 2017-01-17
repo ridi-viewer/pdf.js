@@ -662,8 +662,8 @@ var doLint = function doLint(done, onlyForViewer) {
     console.log();
     console.log('### Checking UMD dependencies');
     var umd = require('./external/umdutils/verifier.js');
-    var filesToValidate =
-      onlyForViewer ? {'pdfjs-web': './web'} : {'pdfjs': './src', 'pdfjs-web': './web', 'pdfjs-test': './test'};
+    var filesToValidate = onlyForViewer ? {'pdfjs-web': './web'}
+      : {'pdfjs': './src', 'pdfjs-web': './web', 'pdfjs-test': './test'};
     if (!umd.validateFiles(filesToValidate)) {
       done(new Error('UMD check failed.'));
       return;
