@@ -2017,7 +2017,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
         // copy back to canvas
         ctx.drawImage(tmpCanvas2, 0, 0, tmpCanvas2.width, tmpCanvas2.height,
-                      0, -targetHeight, w * targetScale, h * targetScale);
+                      0, -h * targetScale, w * targetScale, h * targetScale);
         this.cachedCanvases.removeCanvas(tmpCanvasId);
         this.cachedCanvases.removeCanvas(tmpCanvasId2);
         ctx.scale(targetScale, targetScale);
