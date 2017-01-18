@@ -227,14 +227,19 @@ var CachedCanvases = (function CachedCanvasesClosure() {
       }
       return canvasEntry;
     },
-    clear: function () {
-      for (var id in this.cache) {
-        var canvasEntry = this.cache[id];
+    removeCanvas: function CachedCanvases_removeCanvas(id) {
+      var canvasEntry = this.cache[id];
+      if (canvasEntry) {
         // Zeroing the width and height causes Firefox to release graphics
         // resources immediately, which can greatly reduce memory consumption.
         canvasEntry.canvas.width = 0;
         canvasEntry.canvas.height = 0;
         delete this.cache[id];
+      }
+    },
+    clear: function () {
+      for (var id in this.cache) {
+        this.removeCanvas(id);
       }
     }
   };
