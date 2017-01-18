@@ -1977,11 +1977,52 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.save();
 
       var ctx = this.ctx;
-      // scale the image to the unit square
-      ctx.scale(1 / w, -1 / h);
+      // scale the image to the unit square (also to the 1x scale).
+      var currentTransformX = ctx.mozCurrentTransform[0];
+      var currentTransformY = ctx.mozCurrentTransform[3];
+      ctx.scale(1 / currentTransformX, 1 / currentTransformY);
 
-      ctx.drawImage(domImage, 0, 0, domImage.width, domImage.height,
-                    0, -h, w, h);
+      var targetScale = Math.min(currentTransformX / w, -currentTransformY / h);
+      if (targetScale >= 1) {
+        ctx.scale(targetScale, targetScale);
+        ctx.drawImage(domImage, 0, 0, domImage.width, domImage.height, 0, -h, w, h);
+      } else {
+        var tmpCanvasId = 'scaleCanvas1_' + w + '_' + h;
+        var tmpCanvas =
+          this.cachedCanvases.getCanvas(tmpCanvasId, domImage.width, domImage.height).canvas;
+        var tmpContext = tmpCanvas.getContext('2d');
+        var tmpCanvasId2 = 'scaleCanvas2_' + w + '_' + h;
+        var tmpCanvas2 =
+          this.cachedCanvases.getCanvas(tmpCanvasId2, domImage.width, domImage.height).canvas;
+        var tmpContext2 = tmpCanvas2.getContext('2d');
+        tmpContext.drawImage(domImage, 0, 0);
+        tmpContext2.drawImage(tmpCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height,
+                              0, 0, tmpCanvas2.width, tmpCanvas2.height);
+
+        var rounds = 4;
+        var roundScale = targetScale * rounds;
+        for (var i = 1; i <= rounds; i++) {
+          // scale to the tmp buffer
+          tmpCanvas.width = domImage.width * roundScale / i;
+          tmpCanvas.height = domImage.height * roundScale / i;
+          tmpContext.drawImage(tmpCanvas2, 0, 0, tmpCanvas2.width, tmpCanvas2.height,
+                               0, 0, tmpCanvas.width, tmpCanvas.height);
+
+          // copy back
+          tmpCanvas2.width = domImage.width * roundScale / i;
+          tmpCanvas2.height = domImage.height * roundScale / i;
+          tmpContext2.drawImage(tmpCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height,
+                                0, 0, tmpCanvas2.width, tmpCanvas2.height);
+        }
+
+        // copy back to canvas
+        ctx.drawImage(tmpCanvas2, 0, 0, tmpCanvas2.width, tmpCanvas2.height,
+                      0, -targetHeight, w * targetScale, h * targetScale);
+        this.cachedCanvases.removeCanvas(tmpCanvasId);
+        this.cachedCanvases.removeCanvas(tmpCanvasId2);
+        ctx.scale(targetScale, targetScale);
+      }
+
       if (this.imageLayer) {
         var currentTransform = ctx.mozCurrentTransformInverse;
         var position = this.getCanvasPosition(0, 0);
