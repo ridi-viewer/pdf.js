@@ -14,6 +14,7 @@
     "PDFJSDev": false,
     "require": false,
     "exports": false,
+    "RidiPdfViewer": false,
   },
 
   "rules": {
