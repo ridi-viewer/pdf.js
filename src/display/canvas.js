@@ -1999,7 +1999,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         tmpContext2.drawImage(tmpCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height,
                               0, 0, tmpCanvas2.width, tmpCanvas2.height);
 
-        var rounds = 4;
+        var rounds = RidiPdfViewer.jpegXObjectDownsamplingSteps || 2;
         var roundScale = targetScale * rounds;
         for (var i = 1; i <= rounds; i++) {
           // scale to the tmp buffer

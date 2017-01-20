@@ -11,6 +11,8 @@ var RidiPdfViewer = function() {
   });
 };
 
+RidiPdfViewer.prototype.jpegXObjectDownsamplingSteps = 2;
+
 RidiPdfViewer.prototype.showPopup = function(title, text) {
   this.nativeViewer.showPopup(title ? title.toString() : '',
       text ? text.toString() : '');
