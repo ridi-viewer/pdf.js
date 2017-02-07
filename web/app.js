@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* globals PDFBug, Stats, DEFAULT_URL, RidiPdfViewer */
+/* globals PDFBug, Stats, DEFAULT_URL */
 
 'use strict';
 

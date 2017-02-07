@@ -227,14 +227,19 @@ var CachedCanvases = (function CachedCanvasesClosure() {
       }
       return canvasEntry;
     },
-    clear: function () {
-      for (var id in this.cache) {
-        var canvasEntry = this.cache[id];
+    removeCanvas: function CachedCanvases_removeCanvas(id) {
+      var canvasEntry = this.cache[id];
+      if (canvasEntry) {
         // Zeroing the width and height causes Firefox to release graphics
         // resources immediately, which can greatly reduce memory consumption.
         canvasEntry.canvas.width = 0;
         canvasEntry.canvas.height = 0;
         delete this.cache[id];
+      }
+    },
+    clear: function () {
+      for (var id in this.cache) {
+        this.removeCanvas(id);
       }
     }
   };
@@ -1962,32 +1967,89 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.restore();
     },
 
+    resizeAndDrawImage: function CanvasGraphics_resizeAndDrawImage(imgData, width, height,
+                                                                   finishCallback) {
+      var ctx = this.ctx;
+      this.save();
+      // scale the image to the unit square
+      ctx.scale(1 / width, -1 / height);
+
+      var currentTransform = ctx.mozCurrentTransformInverse;
+      var a = currentTransform[0], b = currentTransform[1];
+      var widthScale = Math.max(Math.sqrt(a * a + b * b), 1);
+      var c = currentTransform[2], d = currentTransform[3];
+      var heightScale = Math.max(Math.sqrt(c * c + d * d), 1);
+
+      var imgToPaint, tmpCanvas;
+      // instanceof HTMLElement does not work in jsdom node.js module
+      if (imgData instanceof HTMLElement || !imgData.data) {
+        imgToPaint = imgData;
+      } else {
+        tmpCanvas = this.cachedCanvases.getCanvas('inlineImage',
+                                                  width, height);
+        var tmpCtx = tmpCanvas.context;
+        putBinaryImageData(tmpCtx, imgData);
+        imgToPaint = tmpCanvas.canvas;
+      }
+
+      var paintWidth = width, paintHeight = height;
+      var tmpCanvasId = 'prescale1';
+      var imageDownsamplingRatioThreshold = RidiPdfViewer.imageDownsamplingRatioThreshold || 1.414;
+      // Vertial or horizontal scaling shall not be more than
+      // imageDownsamplingRatioThreshold to not loose the
+      // pixels during drawImage operation, painting on the temporary canvas(es)
+      // that are imageDownsamplingRatioThreshold smaller in size
+      while ((widthScale > imageDownsamplingRatioThreshold && paintWidth > 1) ||
+             (heightScale > imageDownsamplingRatioThreshold && paintHeight > 1)) {
+        var newWidth = paintWidth, newHeight = paintHeight;
+        if (widthScale > imageDownsamplingRatioThreshold && paintWidth > 1) {
+          newWidth = paintWidth / imageDownsamplingRatioThreshold;
+          widthScale /= paintWidth / newWidth;
+        }
+        if (heightScale > imageDownsamplingRatioThreshold && paintHeight > 1) {
+          newHeight = paintHeight / imageDownsamplingRatioThreshold;
+          heightScale /= paintHeight / newHeight;
+        }
+        tmpCanvas = this.cachedCanvases.getCanvas(tmpCanvasId,
+                                                  newWidth, newHeight);
+        tmpCtx = tmpCanvas.context;
+        tmpCtx.clearRect(0, 0, newWidth, newHeight);
+        tmpCtx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
+                                     0, 0, newWidth, newHeight);
+        imgToPaint = tmpCanvas.canvas;
+        paintWidth = newWidth;
+        paintHeight = newHeight;
+        tmpCanvasId = tmpCanvasId === 'prescale1' ? 'prescale2' : 'prescale1';
+      }
+      ctx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
+                                0, -height, width, height);
+      if (finishCallback) {
+        finishCallback.bind(this)();
+      }
+      this.restore();
+    },
+
     paintJpegXObject: function CanvasGraphics_paintJpegXObject(objId, w, h) {
       var domImage = this.objs.get(objId);
       if (!domImage) {
         warn('Dependent image isn\'t ready yet');
         return;
       }
-
       this.save();
 
-      var ctx = this.ctx;
-      // scale the image to the unit square
-      ctx.scale(1 / w, -1 / h);
-
-      ctx.drawImage(domImage, 0, 0, domImage.width, domImage.height,
-                    0, -h, w, h);
-      if (this.imageLayer) {
-        var currentTransform = ctx.mozCurrentTransformInverse;
-        var position = this.getCanvasPosition(0, 0);
-        this.imageLayer.appendImage({
-          objId: objId,
-          left: position[0],
-          top: position[1],
-          width: w / currentTransform[0],
-          height: h / currentTransform[3]
-        });
-      }
+      this.resizeAndDrawImage(domImage, w, h, function paintJpegXObject_finishCallback() {
+        if (this.imageLayer) {
+          var currentTransform = this.ctx.mozCurrentTransformInverse;
+          var position = this.getCanvasPosition(0, 0);
+          this.imageLayer.appendImage({
+            objId: objId,
+            left: position[0],
+            top: position[1],
+            width: w / currentTransform[0],
+            height: h / currentTransform[3]
+          });
+        }
+      });
       this.restore();
     },
 
@@ -2130,72 +2192,25 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
     paintInlineImageXObject:
       function CanvasGraphics_paintInlineImageXObject(imgData) {
+      this.save();
+
       var width = imgData.width;
       var height = imgData.height;
-      var ctx = this.ctx;
-
-      this.save();
-      // scale the image to the unit square
-      ctx.scale(1 / width, -1 / height);
-
-      var currentTransform = ctx.mozCurrentTransformInverse;
-      var a = currentTransform[0], b = currentTransform[1];
-      var widthScale = Math.max(Math.sqrt(a * a + b * b), 1);
-      var c = currentTransform[2], d = currentTransform[3];
-      var heightScale = Math.max(Math.sqrt(c * c + d * d), 1);
-
-      var imgToPaint, tmpCanvas;
-      // instanceof HTMLElement does not work in jsdom node.js module
-      if (imgData instanceof HTMLElement || !imgData.data) {
-        imgToPaint = imgData;
-      } else {
-        tmpCanvas = this.cachedCanvases.getCanvas('inlineImage',
-                                                  width, height);
-        var tmpCtx = tmpCanvas.context;
-        putBinaryImageData(tmpCtx, imgData);
-        imgToPaint = tmpCanvas.canvas;
-      }
-
-      var paintWidth = width, paintHeight = height;
-      var tmpCanvasId = 'prescale1';
-      // Vertial or horizontal scaling shall not be more than 2 to not loose the
-      // pixels during drawImage operation, painting on the temporary canvas(es)
-      // that are twice smaller in size
-      while ((widthScale > 2 && paintWidth > 1) ||
-             (heightScale > 2 && paintHeight > 1)) {
-        var newWidth = paintWidth, newHeight = paintHeight;
-        if (widthScale > 2 && paintWidth > 1) {
-          newWidth = Math.ceil(paintWidth / 2);
-          widthScale /= paintWidth / newWidth;
+      this.resizeAndDrawImage(imgData, width, height,
+                              function paintInlineImageXObject_finishCallback() {
+        if (this.imageLayer) {
+          var position = this.getCanvasPosition(0, -height);
+          var currentTransform = this.ctx.mozCurrentTransformInverse;
+          this.imageLayer.appendImage({
+            imgData: imgData,
+            left: position[0],
+            top: position[1],
+            width: width / currentTransform[0],
+            height: height / currentTransform[3]
+          });
         }
-        if (heightScale > 2 && paintHeight > 1) {
-          newHeight = Math.ceil(paintHeight / 2);
-          heightScale /= paintHeight / newHeight;
-        }
-        tmpCanvas = this.cachedCanvases.getCanvas(tmpCanvasId,
-                                                  newWidth, newHeight);
-        tmpCtx = tmpCanvas.context;
-        tmpCtx.clearRect(0, 0, newWidth, newHeight);
-        tmpCtx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
-                                     0, 0, newWidth, newHeight);
-        imgToPaint = tmpCanvas.canvas;
-        paintWidth = newWidth;
-        paintHeight = newHeight;
-        tmpCanvasId = tmpCanvasId === 'prescale1' ? 'prescale2' : 'prescale1';
-      }
-      ctx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
-                                0, -height, width, height);
+      });
 
-      if (this.imageLayer) {
-        var position = this.getCanvasPosition(0, -height);
-        this.imageLayer.appendImage({
-          imgData: imgData,
-          left: position[0],
-          top: position[1],
-          width: width / currentTransform[0],
-          height: height / currentTransform[3]
-        });
-      }
       this.restore();
     },
 
