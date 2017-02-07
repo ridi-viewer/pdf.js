@@ -1967,7 +1967,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.restore();
     },
 
-    resizeAndDrawImage: function CanvasGraphics_resizeAndDrawImage(imgData, width, height) {
+    resizeAndDrawImage: function CanvasGraphics_resizeAndDrawImage(imgData, width, height,
+                                                                   finishCallback) {
       var ctx = this.ctx;
       this.save();
       // scale the image to the unit square
@@ -2022,6 +2023,9 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       }
       ctx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
                                 0, -height, width, height);
+      if (finishCallback) {
+        finishCallback.bind(this)();
+      }
       this.restore();
     },
 
@@ -2033,18 +2037,19 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       }
       this.save();
 
-      this.resizeAndDrawImage(domImage, w, h);
-      if (this.imageLayer) {
-        var currentTransform = this.ctx.mozCurrentTransformInverse;
-        var position = this.getCanvasPosition(0, 0);
-        this.imageLayer.appendImage({
-          objId: objId,
-          left: position[0],
-          top: position[1],
-          width: w / currentTransform[0],
-          height: h / currentTransform[3]
-        });
-      }
+      this.resizeAndDrawImage(domImage, w, h, function paintJpegXObject_finishCallback() {
+        if (this.imageLayer) {
+          var currentTransform = this.ctx.mozCurrentTransformInverse;
+          var position = this.getCanvasPosition(0, 0);
+          this.imageLayer.appendImage({
+            objId: objId,
+            left: position[0],
+            top: position[1],
+            width: w / currentTransform[0],
+            height: h / currentTransform[3]
+          });
+        }
+      });
       this.restore();
     },
 
@@ -2191,19 +2196,21 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
       var width = imgData.width;
       var height = imgData.height;
-      this.resizeAndDrawImage(imgData, width, height);
+      this.resizeAndDrawImage(imgData, width, height,
+                              function paintInlineImageXObject_finishCallback() {
+        if (this.imageLayer) {
+          var position = this.getCanvasPosition(0, -height);
+          var currentTransform = this.ctx.mozCurrentTransformInverse;
+          this.imageLayer.appendImage({
+            imgData: imgData,
+            left: position[0],
+            top: position[1],
+            width: width / currentTransform[0],
+            height: height / currentTransform[3]
+          });
+        }
+      });
 
-      if (this.imageLayer) {
-        var position = this.getCanvasPosition(0, -height);
-        var currentTransform = this.ctx.mozCurrentTransformInverse;
-        this.imageLayer.appendImage({
-          imgData: imgData,
-          left: position[0],
-          top: position[1],
-          width: width / currentTransform[0],
-          height: height / currentTransform[3]
-        });
-      }
       this.restore();
     },
 
