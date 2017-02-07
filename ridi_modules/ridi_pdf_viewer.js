@@ -11,7 +11,7 @@ var RidiPdfViewer = function() {
   });
 };
 
-RidiPdfViewer.prototype.jpegXObjectDownsamplingSteps = 2;
+RidiPdfViewer.prototype.imageDownsamplingRatioThreshold = 1.414;
 
 RidiPdfViewer.prototype.showPopup = function(title, text) {
   this.nativeViewer.showPopup(title ? title.toString() : '',

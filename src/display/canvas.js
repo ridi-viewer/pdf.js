@@ -1967,64 +1967,75 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       this.restore();
     },
 
+    resizeAndDrawImage: function CanvasGraphics_resizeAndDrawImage(imgData, width, height) {
+      var ctx = this.ctx;
+      this.save();
+      // scale the image to the unit square
+      ctx.scale(1 / width, -1 / height);
+
+      var currentTransform = ctx.mozCurrentTransformInverse;
+      var a = currentTransform[0], b = currentTransform[1];
+      var widthScale = Math.max(Math.sqrt(a * a + b * b), 1);
+      var c = currentTransform[2], d = currentTransform[3];
+      var heightScale = Math.max(Math.sqrt(c * c + d * d), 1);
+
+      var imgToPaint, tmpCanvas;
+      // instanceof HTMLElement does not work in jsdom node.js module
+      if (imgData instanceof HTMLElement || !imgData.data) {
+        imgToPaint = imgData;
+      } else {
+        tmpCanvas = this.cachedCanvases.getCanvas('inlineImage',
+                                                  width, height);
+        var tmpCtx = tmpCanvas.context;
+        putBinaryImageData(tmpCtx, imgData);
+        imgToPaint = tmpCanvas.canvas;
+      }
+
+      var paintWidth = width, paintHeight = height;
+      var tmpCanvasId = 'prescale1';
+      var imageDownsamplingRatioThreshold = RidiPdfViewer.imageDownsamplingRatioThreshold || 1.414;
+      // Vertial or horizontal scaling shall not be more than
+      // imageDownsamplingRatioThreshold to not loose the
+      // pixels during drawImage operation, painting on the temporary canvas(es)
+      // that are imageDownsamplingRatioThreshold smaller in size
+      while ((widthScale > imageDownsamplingRatioThreshold && paintWidth > 1) ||
+             (heightScale > imageDownsamplingRatioThreshold && paintHeight > 1)) {
+        var newWidth = paintWidth, newHeight = paintHeight;
+        if (widthScale > imageDownsamplingRatioThreshold && paintWidth > 1) {
+          newWidth = paintWidth / imageDownsamplingRatioThreshold;
+          widthScale /= paintWidth / newWidth;
+        }
+        if (heightScale > imageDownsamplingRatioThreshold && paintHeight > 1) {
+          newHeight = paintHeight / imageDownsamplingRatioThreshold;
+          heightScale /= paintHeight / newHeight;
+        }
+        tmpCanvas = this.cachedCanvases.getCanvas(tmpCanvasId,
+                                                  newWidth, newHeight);
+        tmpCtx = tmpCanvas.context;
+        tmpCtx.clearRect(0, 0, newWidth, newHeight);
+        tmpCtx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
+                                     0, 0, newWidth, newHeight);
+        imgToPaint = tmpCanvas.canvas;
+        paintWidth = newWidth;
+        paintHeight = newHeight;
+        tmpCanvasId = tmpCanvasId === 'prescale1' ? 'prescale2' : 'prescale1';
+      }
+      ctx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
+                                0, -height, width, height);
+      this.restore();
+    },
+
     paintJpegXObject: function CanvasGraphics_paintJpegXObject(objId, w, h) {
       var domImage = this.objs.get(objId);
       if (!domImage) {
         warn('Dependent image isn\'t ready yet');
         return;
       }
-
       this.save();
 
-      var ctx = this.ctx;
-      // scale the image to the unit square (also to the 1x scale).
-      var currentTransformX = ctx.mozCurrentTransform[0];
-      var currentTransformY = ctx.mozCurrentTransform[3];
-      ctx.scale(1 / currentTransformX, 1 / currentTransformY);
-
-      var targetScale = Math.min(currentTransformX / w, -currentTransformY / h);
-      if (targetScale >= 1) {
-        ctx.scale(targetScale, targetScale);
-        ctx.drawImage(domImage, 0, 0, domImage.width, domImage.height, 0, -h, w, h);
-      } else {
-        var tmpCanvasId = 'scaleCanvas1_' + w + '_' + h;
-        var tmpCanvas =
-          this.cachedCanvases.getCanvas(tmpCanvasId, domImage.width, domImage.height).canvas;
-        var tmpContext = tmpCanvas.getContext('2d');
-        var tmpCanvasId2 = 'scaleCanvas2_' + w + '_' + h;
-        var tmpCanvas2 =
-          this.cachedCanvases.getCanvas(tmpCanvasId2, domImage.width, domImage.height).canvas;
-        var tmpContext2 = tmpCanvas2.getContext('2d');
-        tmpContext.drawImage(domImage, 0, 0);
-        tmpContext2.drawImage(tmpCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height,
-                              0, 0, tmpCanvas2.width, tmpCanvas2.height);
-
-        var rounds = RidiPdfViewer.jpegXObjectDownsamplingSteps || 2;
-        var roundScale = targetScale * rounds;
-        for (var i = 1; i <= rounds; i++) {
-          // scale to the tmp buffer
-          tmpCanvas.width = domImage.width * roundScale / i;
-          tmpCanvas.height = domImage.height * roundScale / i;
-          tmpContext.drawImage(tmpCanvas2, 0, 0, tmpCanvas2.width, tmpCanvas2.height,
-                               0, 0, tmpCanvas.width, tmpCanvas.height);
-
-          // copy back
-          tmpCanvas2.width = domImage.width * roundScale / i;
-          tmpCanvas2.height = domImage.height * roundScale / i;
-          tmpContext2.drawImage(tmpCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height,
-                                0, 0, tmpCanvas2.width, tmpCanvas2.height);
-        }
-
-        // copy back to canvas
-        ctx.drawImage(tmpCanvas2, 0, 0, tmpCanvas2.width, tmpCanvas2.height,
-                      0, -h * targetScale, w * targetScale, h * targetScale);
-        this.cachedCanvases.removeCanvas(tmpCanvasId);
-        this.cachedCanvases.removeCanvas(tmpCanvasId2);
-        ctx.scale(targetScale, targetScale);
-      }
-
+      this.resizeAndDrawImage(domImage, w, h);
       if (this.imageLayer) {
-        var currentTransform = ctx.mozCurrentTransformInverse;
+        var currentTransform = this.ctx.mozCurrentTransformInverse;
         var position = this.getCanvasPosition(0, 0);
         this.imageLayer.appendImage({
           objId: objId,
@@ -2176,64 +2187,15 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 
     paintInlineImageXObject:
       function CanvasGraphics_paintInlineImageXObject(imgData) {
+      this.save();
+
       var width = imgData.width;
       var height = imgData.height;
-      var ctx = this.ctx;
-
-      this.save();
-      // scale the image to the unit square
-      ctx.scale(1 / width, -1 / height);
-
-      var currentTransform = ctx.mozCurrentTransformInverse;
-      var a = currentTransform[0], b = currentTransform[1];
-      var widthScale = Math.max(Math.sqrt(a * a + b * b), 1);
-      var c = currentTransform[2], d = currentTransform[3];
-      var heightScale = Math.max(Math.sqrt(c * c + d * d), 1);
-
-      var imgToPaint, tmpCanvas;
-      // instanceof HTMLElement does not work in jsdom node.js module
-      if (imgData instanceof HTMLElement || !imgData.data) {
-        imgToPaint = imgData;
-      } else {
-        tmpCanvas = this.cachedCanvases.getCanvas('inlineImage',
-                                                  width, height);
-        var tmpCtx = tmpCanvas.context;
-        putBinaryImageData(tmpCtx, imgData);
-        imgToPaint = tmpCanvas.canvas;
-      }
-
-      var paintWidth = width, paintHeight = height;
-      var tmpCanvasId = 'prescale1';
-      // Vertial or horizontal scaling shall not be more than 2 to not loose the
-      // pixels during drawImage operation, painting on the temporary canvas(es)
-      // that are twice smaller in size
-      while ((widthScale > 2 && paintWidth > 1) ||
-             (heightScale > 2 && paintHeight > 1)) {
-        var newWidth = paintWidth, newHeight = paintHeight;
-        if (widthScale > 2 && paintWidth > 1) {
-          newWidth = Math.ceil(paintWidth / 2);
-          widthScale /= paintWidth / newWidth;
-        }
-        if (heightScale > 2 && paintHeight > 1) {
-          newHeight = Math.ceil(paintHeight / 2);
-          heightScale /= paintHeight / newHeight;
-        }
-        tmpCanvas = this.cachedCanvases.getCanvas(tmpCanvasId,
-                                                  newWidth, newHeight);
-        tmpCtx = tmpCanvas.context;
-        tmpCtx.clearRect(0, 0, newWidth, newHeight);
-        tmpCtx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
-                                     0, 0, newWidth, newHeight);
-        imgToPaint = tmpCanvas.canvas;
-        paintWidth = newWidth;
-        paintHeight = newHeight;
-        tmpCanvasId = tmpCanvasId === 'prescale1' ? 'prescale2' : 'prescale1';
-      }
-      ctx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
-                                0, -height, width, height);
+      this.resizeAndDrawImage(imgData, width, height);
 
       if (this.imageLayer) {
         var position = this.getCanvasPosition(0, -height);
+        var currentTransform = this.ctx.mozCurrentTransformInverse;
         this.imageLayer.appendImage({
           imgData: imgData,
           left: position[0],
