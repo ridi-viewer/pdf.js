@@ -61,7 +61,10 @@ FontLoader.prototype = {
   clear: function fontLoaderClear() {
     var styleElement = this.styleElement;
     if (styleElement) {
-      styleElement.parentNode.removeChild(styleElement);
+      if (styleElement.parentNode) {
+        // Prevent "TypeError: styleElement.parentNode is null" during testing.
+        styleElement.parentNode.removeChild(styleElement);
+      }
       styleElement = this.styleElement = null;
     }
     if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('MOZCENTRAL')) {
@@ -216,6 +219,7 @@ if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('MOZCENTRAL')) {
 
       var i, ii;
 
+      // The temporary canvas is used to determine if fonts are loaded.
       var canvas = document.createElement('canvas');
       canvas.width = 1;
       canvas.height = 1;

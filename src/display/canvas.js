@@ -80,13 +80,6 @@ var IsLittleEndianCached = {
   }
 };
 
-function createScratchCanvas(width, height) {
-  var canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  return canvas;
-}
-
 function addContextCurrentTransform(ctx) {
   // If the context doesn't expose a `mozCurrentTransform`, add a JS based one.
   if (!ctx.mozCurrentTransform) {
@@ -204,7 +197,8 @@ function addContextCurrentTransform(ctx) {
 }
 
 var CachedCanvases = (function CachedCanvasesClosure() {
-  function CachedCanvases() {
+  function CachedCanvases(canvasFactory) {
+    this.canvasFactory = canvasFactory;
     this.cache = Object.create(null);
   }
   CachedCanvases.prototype = {
@@ -213,33 +207,23 @@ var CachedCanvases = (function CachedCanvasesClosure() {
       var canvasEntry;
       if (this.cache[id] !== undefined) {
         canvasEntry = this.cache[id];
-        canvasEntry.canvas.width = width;
-        canvasEntry.canvas.height = height;
+        this.canvasFactory.reset(canvasEntry, width, height);
         // reset canvas transform for emulated mozCurrentTransform, if needed
         canvasEntry.context.setTransform(1, 0, 0, 1, 0, 0);
       } else {
-        var canvas = createScratchCanvas(width, height);
-        var ctx = canvas.getContext('2d');
-        if (trackTransform) {
-          addContextCurrentTransform(ctx);
-        }
-        this.cache[id] = canvasEntry = {canvas: canvas, context: ctx};
+        canvasEntry = this.canvasFactory.create(width, height);
+        this.cache[id] = canvasEntry;
+      }
+      if (trackTransform) {
+        addContextCurrentTransform(canvasEntry.context);
       }
       return canvasEntry;
     },
-    removeCanvas: function CachedCanvases_removeCanvas(id) {
-      var canvasEntry = this.cache[id];
-      if (canvasEntry) {
-        // Zeroing the width and height causes Firefox to release graphics
-        // resources immediately, which can greatly reduce memory consumption.
-        canvasEntry.canvas.width = 0;
-        canvasEntry.canvas.height = 0;
-        delete this.cache[id];
-      }
-    },
     clear: function () {
       for (var id in this.cache) {
-        this.removeCanvas(id);
+        var canvasEntry = this.cache[id];
+        this.canvasFactory.destroy(canvasEntry);
+        delete this.cache[id];
       }
     }
   };
@@ -461,7 +445,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
   // Defines the number of steps before checking the execution time
   var EXECUTION_STEPS = 10;
 
-  function CanvasGraphics(canvasCtx, commonObjs, objs, imageLayer) {
+  function CanvasGraphics(canvasCtx, commonObjs, objs, canvasFactory,
+                          imageLayer) {
     this.ctx = canvasCtx;
     this.current = new CanvasExtraState();
     this.stateStack = [];
@@ -471,6 +456,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     this.xobjs = null;
     this.commonObjs = commonObjs;
     this.objs = objs;
+    this.canvasFactory = canvasFactory;
     this.imageLayer = imageLayer;
     this.groupStack = [];
     this.processingType3 = null;
@@ -482,7 +468,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     this.smaskStack = [];
     this.smaskCounter = 0;
     this.tempSMask = null;
-    this.cachedCanvases = new CachedCanvases();
+    this.cachedCanvases = new CachedCanvases(this.canvasFactory);
     if (canvasCtx) {
       // NOTE: if mozCurrentTransform is polyfilled, then the current state of
       // the transformation must already be set in canvasCtx._transformMatrix.
@@ -1234,13 +1220,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       }
 
       if (this.pendingEOFill) {
-        if (ctx.mozFillRule !== undefined) {
-          ctx.mozFillRule = 'evenodd';
-          ctx.fill();
-          ctx.mozFillRule = 'nonzero';
-        } else {
-          ctx.fill('evenodd');
-        }
+        ctx.fill('evenodd');
         this.pendingEOFill = false;
       } else {
         ctx.fill();
@@ -1459,7 +1439,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
     get isFontSubpixelAAEnabled() {
       // Checks if anti-aliasing is enabled when scaled text is painted.
       // On Windows GDI scaled fonts looks bad.
-      var ctx = document.createElement('canvas').getContext('2d');
+      var ctx = this.canvasFactory.create(10, 10).context;
       ctx.scale(1.5, 1);
       ctx.fillText('I', 0, 10);
       var data = ctx.getImageData(0, 0, 10, 10).data;
@@ -1705,7 +1685,8 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
         var self = this;
         var canvasGraphicsFactory = {
           createCanvasGraphics: function (ctx) {
-            return new CanvasGraphics(ctx, self.commonObjs, self.objs);
+            return new CanvasGraphics(ctx, self.commonObjs, self.objs,
+                                      self.canvasFactory);
           }
         };
         pattern = new TilingPattern(IR, color, this.ctx, canvasGraphicsFactory,
@@ -1715,10 +1696,10 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       }
       return pattern;
     },
-    setStrokeColorN: function CanvasGraphics_setStrokeColorN(/*...*/) {
+    setStrokeColorN: function CanvasGraphics_setStrokeColorN() {
       this.current.strokeColor = this.getColorN_Pattern(arguments);
     },
-    setFillColorN: function CanvasGraphics_setFillColorN(/*...*/) {
+    setFillColorN: function CanvasGraphics_setFillColorN() {
       this.current.fillColor = this.getColorN_Pattern(arguments);
       this.current.patternFill = true;
     },
@@ -2288,13 +2269,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
       var ctx = this.ctx;
       if (this.pendingClip) {
         if (this.pendingClip === EO_CLIP) {
-          if (ctx.mozFillRule !== undefined) {
-            ctx.mozFillRule = 'evenodd';
-            ctx.clip();
-            ctx.mozFillRule = 'nonzero';
-          } else {
-            ctx.clip('evenodd');
-          }
+          ctx.clip('evenodd');
         } else {
           ctx.clip();
         }
@@ -2335,5 +2310,4 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
 })();
 
 exports.CanvasGraphics = CanvasGraphics;
-exports.createScratchCanvas = createScratchCanvas;
 }));

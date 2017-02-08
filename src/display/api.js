@@ -38,7 +38,6 @@ var InvalidPDFException = sharedUtil.InvalidPDFException;
 var MessageHandler = sharedUtil.MessageHandler;
 var MissingPDFException = sharedUtil.MissingPDFException;
 var PageViewport = sharedUtil.PageViewport;
-var PasswordResponses = sharedUtil.PasswordResponses;
 var PasswordException = sharedUtil.PasswordException;
 var StatTimer = sharedUtil.StatTimer;
 var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
@@ -60,9 +59,9 @@ var warn = sharedUtil.warn;
 var FontFaceObject = displayFontLoader.FontFaceObject;
 var FontLoader = displayFontLoader.FontLoader;
 var CanvasGraphics = displayCanvas.CanvasGraphics;
-var createScratchCanvas = displayCanvas.createScratchCanvas;
 var Metadata = displayMetadata.Metadata;
 var getDefaultSetting = displayDOMUtils.getDefaultSetting;
+var DOMCanvasFactory = displayDOMUtils.DOMCanvasFactory;
 
 var DEFAULT_RANGE_CHUNK_SIZE = 65536; // 2^16 = 65536
 
@@ -131,6 +130,10 @@ if (typeof PDFJSDev !== 'undefined' &&
  * @property {string} docBaseUrl - (optional) The base URL of the document,
  *   used when attempting to recover valid absolute URLs for annotations, and
  *   outline items, that (incorrectly) only specify relative URLs.
+ * @property {boolean} disableNativeImageDecoder - (optional) Disable decoding
+ *   of certain (simple) JPEG images in the browser. This is useful for
+ *   environments without DOM image support, such as e.g. Node.js.
+ *   The default value is `false`.
  */
 
 /**
@@ -244,6 +247,7 @@ function getDocument(src, pdfDataRangeTransport,
   }
 
   params.rangeChunkSize = params.rangeChunkSize || DEFAULT_RANGE_CHUNK_SIZE;
+  params.disableNativeImageDecoder = params.disableNativeImageDecoder === true;
 
   if (!worker) {
     // Worker was not provided -- creating and owning our own.
@@ -304,6 +308,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
     postMessageTransfers: getDefaultSetting('postMessageTransfers') &&
                           !isPostMessageTransfersDisabled,
     docBaseUrl: source.docBaseUrl,
+    disableNativeImageDecoder: source.disableNativeImageDecoder,
   }).then(function (workerId) {
     if (worker.destroyed) {
       throw new Error('Worker was destroyed');
@@ -696,6 +701,9 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
  *                      called each time the rendering is paused.  To continue
  *                      rendering call the function that is the first argument
  *                      to the callback.
+ * @property {Object} canvasFactory - (optional) The factory that will be used
+ *                    when creating canvases. The default value is
+ *                    {DOMCanvasFactory}.
  */
 
 /**
@@ -804,6 +812,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       var renderingIntent = (params.intent === 'print' ? 'print' : 'display');
       var renderInteractiveForms = (params.renderInteractiveForms === true ?
                                     true : /* Default */ false);
+      var canvasFactory = params.canvasFactory || new DOMCanvasFactory();
 
       if (!this.intentStates[renderingIntent]) {
         this.intentStates[renderingIntent] = Object.create(null);
@@ -833,7 +842,8 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
                                                       this.objs,
                                                       this.commonObjs,
                                                       intentState.operatorList,
-                                                      this.pageNumber);
+                                                      this.pageNumber,
+                                                      canvasFactory);
       internalRenderTask.useRequestAnimationFrame = renderingIntent !== 'print';
       if (!intentState.renderTasks) {
         intentState.renderTasks = [];
@@ -1734,7 +1744,9 @@ var WorkerTransport = (function WorkerTransportClosure() {
           xhr.open('GET', imageUrl, true);
           xhr.responseType = 'blob';
 
-          var failure = function(evt) { reject(evt); };
+          var failure = function(evt) {
+            reject(evt);
+          };
           xhr.addEventListener('error', failure);
           xhr.addEventListener('abort', failure);
 
@@ -1808,6 +1820,12 @@ var WorkerTransport = (function WorkerTransportClosure() {
           return Promise.reject(new Error('Worker was destroyed'));
         }
 
+        if (typeof document === 'undefined') {
+          // Make sure that this code is not executing in node.js, as
+          // it's using DOM image, and there is no library to support that.
+          return Promise.reject(new Error('"document" is not defined.'));
+        }
+
         var imageUrl = data[0];
         var components = data[1];
         if (components !== 3 && components !== 1) {
@@ -1823,7 +1841,9 @@ var WorkerTransport = (function WorkerTransportClosure() {
             var size = width * height;
             var rgbaLength = size * 4;
             var buf = new Uint8Array(size * components);
-            var tmpCanvas = createScratchCanvas(width, height);
+            var tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = width;
+            tmpCanvas.height = height;
             var tmpCtx = tmpCanvas.getContext('2d');
             tmpCtx.drawImage(img, 0, 0);
             var data = tmpCtx.getImageData(0, 0, width, height).data;
@@ -2112,7 +2132,7 @@ var RenderTask = (function RenderTaskClosure() {
 var InternalRenderTask = (function InternalRenderTaskClosure() {
 
   function InternalRenderTask(callback, params, objs, commonObjs, operatorList,
-                              pageNumber) {
+                              pageNumber, canvasFactory) {
     this.callback = callback;
     this.params = params;
     this.objs = objs;
@@ -2120,6 +2140,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
     this.operatorListIdx = null;
     this.operatorList = operatorList;
     this.pageNumber = pageNumber;
+    this.canvasFactory = canvasFactory;
     this.running = false;
     this.graphicsReadyCallback = null;
     this.graphicsReady = false;
@@ -2150,7 +2171,8 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
 
       var params = this.params;
       this.gfx = new CanvasGraphics(params.canvasContext, this.commonObjs,
-                                    this.objs, params.imageLayer);
+                                    this.objs, this.canvasFactory,
+                                    params.imageLayer);
 
       this.gfx.beginDrawing(params.transform, params.viewport, transparency);
       this.operatorListIdx = 0;
@@ -2190,7 +2212,7 @@ var InternalRenderTask = (function InternalRenderTaskClosure() {
         return;
       }
       if (this.task.onContinue) {
-        this.task.onContinue.call(this.task, this._scheduleNextBound);
+        this.task.onContinue(this._scheduleNextBound);
       } else {
         this._scheduleNext();
       }

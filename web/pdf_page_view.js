@@ -102,7 +102,7 @@ var PDFPageView = (function PDFPageViewClosure() {
     this.renderer = options.renderer || RendererType.CANVAS;
 
     this.paintTask = null;
-    this.paintedViewport = null;
+    this.paintedViewportMap = new WeakMap();
     this.renderingState = RenderingStates.INITIAL;
     this.resume = null;
     this.error = null;
@@ -117,7 +117,6 @@ var PDFPageView = (function PDFPageViewClosure() {
     this.annotationLayer = null;
 
     var div = document.createElement('div');
-    div.id = 'pageContainer' + this.id;
     div.className = 'page';
     div.style.width = Math.floor(this.viewport.width) + 'px';
     div.style.height = Math.floor(this.viewport.height) + 'px';
@@ -228,6 +227,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       }
 
       if (this.canvas && !currentZoomLayerNode) {
+        this.paintedViewportMap.delete(this.canvas);
         // Zeroing the width and height causes Firefox to release graphics
         // resources immediately, which can greatly reduce memory consumption.
         this.canvas.width = 0;
@@ -235,11 +235,11 @@ var PDFPageView = (function PDFPageViewClosure() {
         delete this.canvas;
       }
       if (this.svg) {
+        this.paintedViewportMap.delete(this.svg);
         delete this.svg;
       }
       if (!currentZoomLayerNode) {
         this.zoomLayer = null;
-        this.paintedViewport = null;
       }
 
       this.loadingIconDiv = document.createElement('div');
@@ -348,7 +348,7 @@ var PDFPageView = (function PDFPageViewClosure() {
         Math.floor(height) + 'px';
       // The canvas may have been originally rotated, rotate relative to that.
       var relativeRotation = this.viewport.rotation -
-                             this.paintedViewport.rotation;
+                             this.paintedViewportMap.get(target).rotation;
       var absRotation = Math.abs(relativeRotation);
       var scaleX = 1, scaleY = 1;
       if (absRotation === 90 || absRotation === 270) {
@@ -429,7 +429,6 @@ var PDFPageView = (function PDFPageViewClosure() {
 
       var self = this;
       var pdfPage = this.pdfPage;
-      var viewport = this.viewport;
       var div = this.div;
       // Wrap the canvas so if it has a css transform for highdpi the overflow
       // will be hidden in FF.
@@ -505,9 +504,10 @@ var PDFPageView = (function PDFPageViewClosure() {
         }
 
         if (self.zoomLayer) {
+          var zoomLayerCanvas = self.zoomLayer.firstChild;
+          self.paintedViewportMap.delete(zoomLayerCanvas);
           // Zeroing the width and height causes Firefox to release graphics
           // resources immediately, which can greatly reduce memory consumption.
-          var zoomLayerCanvas = self.zoomLayer.firstChild;
           zoomLayerCanvas.width = 0;
           zoomLayerCanvas.height = 0;
 
@@ -591,8 +591,6 @@ var PDFPageView = (function PDFPageViewClosure() {
         }
       };
 
-      var self = this;
-      var pdfPage = this.pdfPage;
       var viewport = this.viewport;
       var canvas = document.createElement('canvas');
       canvas.id = 'page' + this.id;
@@ -649,7 +647,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       canvas.style.width = roundToDivide(viewport.width, sfx[1]) + 'px';
       canvas.style.height = roundToDivide(viewport.height, sfy[1]) + 'px';
       // Add the viewport so it's known what it was originally drawn with.
-      this.paintedViewport = viewport;
+      this.paintedViewportMap.set(canvas, viewport);
 
       // Rendering area
       var transform = !outputScale.scaled ? null :
@@ -712,7 +710,7 @@ var PDFPageView = (function PDFPageViewClosure() {
         return svgGfx.getSVG(opList, actualSizeViewport).then(function (svg) {
           ensureNotCancelled();
           self.svg = svg;
-          self.paintedViewport = actualSizeViewport;
+          self.paintedViewportMap.set(svg, actualSizeViewport);
 
           svg.style.width = wrapper.style.width;
           svg.style.height = wrapper.style.height;

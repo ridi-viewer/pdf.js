@@ -74,6 +74,38 @@ be loaded by `pdf.js`. If you want to support more browsers than Firefox you'll 
 to include `compatibility.js` from `build/generic/web/`. The PDF.js files are large and
 should be minified for production.
 
+## Using PDF.js in a web application
+
+To use PDF.js in a web application you can choose to use a pre-built version of the library
+or to build it from source. We supply pre-built versions for usage with NPM and Bower under
+the `pdfjs-dist` name. For more information and examples please refer to the
+[wiki page](https://github.com/mozilla/pdf.js/wiki/Setup-pdf.js-in-a-website) on this subject.
+
+## Learning
+
+You can play with the PDF.js API directly from your browser through the live
+demos below:
+
++ [Interactive examples](http://mozilla.github.io/pdf.js/examples/index.html#interactive-examples)
+
+The repo contains a hello world example that you can run locally:
+
++ [examples/helloworld/](https://github.com/mozilla/pdf.js/blob/master/examples/helloworld/)
+
+For an introduction to the PDF.js code, check out the presentation by our
+contributor Julian Viereck:
+
++ http://www.youtube.com/watch?v=Iv15UY-4Fg8
+
+You can read more about PDF.js here:
+
++ http://andreasgal.com/2011/06/15/pdf-js/
++ http://blog.mozilla.com/cjones/2011/06/15/overview-of-pdf-js-guts/
+
+Even more learning resources can be found at:
+
++ https://github.com/mozilla/pdf.js/wiki/Additional-Learning-Resources
+
 ## Questions
 
 Check out our FAQs and get answers to common questions:

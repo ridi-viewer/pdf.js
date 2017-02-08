@@ -1612,6 +1612,7 @@ if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
     }
   };
 }
+void webViewerOpenFileViaURL;
 
 function webViewerPageRendered(e) {
   var pageNumber = e.pageNumber;

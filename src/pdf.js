@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 /* eslint strict: ["error", "function"] */
+/* eslint-disable no-unused-vars */
 /* umdutils ignore */
 
 (function (root, factory) {
@@ -55,6 +56,8 @@
     exports.AnnotationLayer =
       pdfjsLibs.pdfjsDisplayAnnotationLayer.AnnotationLayer;
     exports.CustomStyle = pdfjsLibs.pdfjsDisplayDOMUtils.CustomStyle;
+    exports.createPromiseCapability =
+      pdfjsLibs.pdfjsSharedUtil.createPromiseCapability;
     exports.PasswordResponses = pdfjsLibs.pdfjsSharedUtil.PasswordResponses;
     exports.InvalidPDFException = pdfjsLibs.pdfjsSharedUtil.InvalidPDFException;
     exports.MissingPDFException = pdfjsLibs.pdfjsSharedUtil.MissingPDFException;
