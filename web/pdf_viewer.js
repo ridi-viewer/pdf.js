@@ -91,6 +91,9 @@ var DEFAULT_ADJACENT_PAGES_TO_DRAW = 7;
  *   text selection behaviour. The default is `false`.
  * @property {boolean} renderInteractiveForms - (optional) Enables rendering of
  *   interactive form elements. The default is `false`.
+ * @property {boolean} enablePrintAutoRotate - (optional) Enables automatic
+ *   rotation of pages whose orientation differ from the first page upon
+ *   printing. The default is `false`.
  * @property {string} renderer - 'canvas' or 'svg'. The default is 'canvas'.
  */
 
@@ -132,6 +135,10 @@ var PDFViewer = (function pdfViewer() {
     return false;
   }
 
+  function isPortraitOrientation(size) {
+    return size.width <= size.height;
+  }
+
   /**
    * @constructs PDFViewer
    * @param {PDFViewerOptions} options
@@ -145,6 +152,7 @@ var PDFViewer = (function pdfViewer() {
     this.removePageBorders = options.removePageBorders || false;
     this.enhanceTextSelection = options.enhanceTextSelection || false;
     this.renderInteractiveForms = options.renderInteractiveForms || false;
+    this.enablePrintAutoRotate = options.enablePrintAutoRotate || false;
     this.renderer = options.renderer || RendererType.CANVAS;
 
     this.defaultRenderingQueue = !options.renderingQueue;
@@ -1197,12 +1205,30 @@ var PDFViewer = (function pdfViewer() {
 
     /**
      * Returns sizes of the pages.
-     * @returns {Array} Array of objects with width/height fields.
+     * @returns {Array} Array of objects with width/height/rotation fields.
      */
     getPagesOverview: function () {
-      return this._pages.map(function (pageView) {
+      var pagesOverview = this._pages.map(function (pageView) {
         var viewport = pageView.pdfPage.getViewport(1);
-        return {width: viewport.width, height: viewport.height};
+        return {
+          width: viewport.width,
+          height: viewport.height,
+          rotation: viewport.rotation,
+        };
+      });
+      if (!this.enablePrintAutoRotate) {
+        return pagesOverview;
+      }
+      var isFirstPagePortrait = isPortraitOrientation(pagesOverview[0]);
+      return pagesOverview.map(function (size) {
+        if (isFirstPagePortrait === isPortraitOrientation(size)) {
+          return size;
+        }
+        return {
+          width: size.height,
+          height: size.width,
+          rotation: (size.rotation + 90) % 360,
+        };
       });
     },
   };
