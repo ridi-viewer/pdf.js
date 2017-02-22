@@ -2120,7 +2120,6 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
   return false;
 }
 
-var zoomDisabled = false, zoomDisabledTimeout;
 function handleZoomByWheel(evt) {
   var support = PDFViewerApplication.supportedMouseWheelZoomModifierKeys;
   if ((evt.ctrlKey && !support.ctrlKey) ||
@@ -2129,10 +2128,6 @@ function handleZoomByWheel(evt) {
   }
   // Only zoom the pages, not the entire viewer.
   evt.preventDefault();
-  // NOTE: this check must be placed *after* preventDefault.
-  if (zoomDisabled) {
-    return;
-  }
 
   var modifiedClientY = evt.clientY;
   var currentPageId = PDFViewerApplication.page;
@@ -2203,12 +2198,6 @@ function handleScrollByWheel(evt) {
       pdfViewer.container.scrollTop -= evt.wheelDeltaY;
       pdfViewer.container.scrollLeft -= evt.wheelDeltaX;
     }
-
-    zoomDisabled = true;
-    clearTimeout(zoomDisabledTimeout);
-    zoomDisabledTimeout = setTimeout(function () {
-      zoomDisabled = false;
-    }, 13);
   }
 }
 
