@@ -209,6 +209,22 @@ var PDFViewer = (function pdfViewer() {
       this._defaultAdjacentPagesToDraw = Math.max(val, 0);
     },
 
+    temporarilyDisablePreDrawing: function PDFViewer_temporarilyDisablePreDrawing(duration) {
+      duration = duration || 10000;
+      var defaultVerticalTolerance = this.defaultVerticalTolerance;
+      var defaultAdjacentPagesToDraw = this.defaultAdjacentPagesToDraw;
+      this.defaultVerticalTolerance = 0;
+      this.defaultAdjacentPagesToDraw = 0;
+      if (this._disablePreDrawingTimeout) {
+        clearTimeout(this._disablePreDrawingTimeout);
+      }
+      this._disablePreDrawingTimeout = setTimeout(function() {
+        this.defaultVerticalTolerance = defaultVerticalTolerance;
+        this.defaultAdjacentPagesToDraw = defaultAdjacentPagesToDraw;
+        this._disablePreDrawingTimeout = null;
+      }.bind(this), duration);
+    },
+
     get twoPageMode() {
       return this._twoPageMode;
     },
