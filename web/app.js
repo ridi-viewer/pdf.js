@@ -2120,6 +2120,7 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
   return false;
 }
 
+var useOnlyCssZoomTimeout;
 function handleZoomByWheel(evt) {
   var support = PDFViewerApplication.supportedMouseWheelZoomModifierKeys;
   if ((evt.ctrlKey && !support.ctrlKey) ||
@@ -2150,7 +2151,19 @@ function handleZoomByWheel(evt) {
   var direction = (ticks < 0) ? 'zoomOut' : 'zoomIn';
   var previousScale = pdfViewer.currentScale;
 
+  // For smooth zooming.
+  pdfjsLib.PDFJS.useOnlyCssZoom = true;
+  pdfViewer.temporarilyDisablePreDrawing();
   PDFViewerApplication[direction](Math.abs(ticks));
+  if (useOnlyCssZoomTimeout) {
+    clearTimeout(useOnlyCssZoomTimeout);
+  }
+  useOnlyCssZoomTimeout = setTimeout(function() {
+    pdfjsLib.PDFJS.useOnlyCssZoom = false;
+    pdfViewer.temporarilyDisablePreDrawing();
+    pdfViewer.forceRefresh();
+    useOnlyCssZoomTimeout = null;
+  }, 150);
 
   var currentScale = pdfViewer.currentScale;
   if (previousScale !== currentScale) {
