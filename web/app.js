@@ -103,7 +103,7 @@ var animationStarted = uiUtilsLib.animationStarted;
 var localized = uiUtilsLib.localized;
 var RendererType = uiUtilsLib.RendererType;
 
-var DEFAULT_SCALE_DELTA = 1.014;
+var DEFAULT_SCALE_DELTA = 1.0025;
 var DISABLE_AUTO_FETCH_LOADING_BAR_TIMEOUT = 5000;
 
 function configure(PDFJS) {
@@ -446,12 +446,12 @@ var PDFViewerApplication = {
     this.initialize(config).then(webViewerInitialized);
   },
 
-  // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY (12 ticks)
+  // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY
   zoomIn: function pdfViewZoomIn(ticks) {
     // Note : this may collide with page-fit scale approximation if you set 0.995 more closer to 1
     var shouldApproximateToOriginalScale = this.pdfViewer.currentScale < 0.995;
     if (ticks === undefined) {
-      ticks = 12;
+      ticks = 120;
     }
 
     var newScale = this.pdfViewer.currentScale;
@@ -470,7 +470,7 @@ var PDFViewerApplication = {
   zoomOut: function pdfViewZoomOut(ticks) {
     var shouldApproximateToOriginalScale = this.pdfViewer.currentScale > 1.005;
     if (ticks === undefined) {
-      ticks = 12;
+      ticks = 120;
     }
 
     var newScale = this.pdfViewer.currentScale;
@@ -2144,7 +2144,7 @@ function handleZoomByWheel(evt) {
   }
 
   // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY
-  var MOUSE_WHEEL_DELTA_FACTOR = 10;
+  var MOUSE_WHEEL_DELTA_FACTOR = 1;
   var ticks = (evt.type === 'DOMMouseScroll') ? -evt.detail :
               evt.wheelDelta / MOUSE_WHEEL_DELTA_FACTOR;
   var direction = (ticks < 0) ? 'zoomOut' : 'zoomIn';
