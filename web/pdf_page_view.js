@@ -599,11 +599,15 @@ var PDFPageView = (function PDFPageViewClosure() {
       canvas.setAttribute('hidden', 'hidden');
       var isCanvasHidden = true;
       var showCanvas = function () {
+        if (!this.paintTask) {
+          // Drawing is cancelled!
+          return;
+        }
         if (isCanvasHidden) {
           canvas.removeAttribute('hidden');
           isCanvasHidden = false;
         }
-      };
+      }.bind(this);
 
       canvasWrapper.appendChild(canvas);
       this.canvas = canvas;
@@ -661,6 +665,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       };
       var renderTask = this.pdfPage.render(renderContext);
       renderTask.onContinue = function (cont) {
+        showCanvas();
         if (result.onRenderContinue) {
           result.onRenderContinue(cont);
         } else {
@@ -674,6 +679,7 @@ var PDFPageView = (function PDFPageViewClosure() {
           resolveRenderPromise(undefined);
         },
         function pdfPageRenderError(error) {
+          showCanvas();
           rejectRenderPromise(error);
         }
       );
