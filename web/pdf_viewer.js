@@ -1084,6 +1084,14 @@ var PDFViewer = (function pdfViewer() {
       });
     },
 
+    forceRefresh: function () {
+      this._cancelRendering();
+      this._pages.forEach(function (page) {
+        page.update();
+      });
+      this.update();
+    },
+
     containsElement: function (element) {
       return this.container.contains(element);
     },
