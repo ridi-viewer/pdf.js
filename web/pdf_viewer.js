@@ -693,24 +693,25 @@ var PDFViewer = (function pdfViewer() {
      * but other visible (but not current) pages may be still being rendered.
      * Hiding both loadingIconOverlay and loadingIconDiv would be inappropriate in such situations.
      */
-    get isCurrentPageRendering() {
-      function isPageRendering(pageView) {
-        return (pageView ? !!pageView.loadingIconDiv : false);
+    get isCurrentPageRendered() {
+      function isPageRendered(pageView) {
+        // Must return true as default, as this.currentRightSidePageView may be null
+        return pageView ? (pageView.renderingState === RenderingStates.FINISHED) : true;
       }
 
       if (this.isLookingAtLeftSidePage) {
-        return isPageRendering(this.currentPageView);
+        return isPageRendered(this.currentPageView);
       } else if (this.isLookingAtRightSidePage) {
-        return isPageRendering(this.currentRightSidePageView);
+        return isPageRendered(this.currentRightSidePageView);
       }
       // When the user is looking at ambiguous location.
-      return isPageRendering(this.currentPageView) ||
-        isPageRendering(this.currentRightSidePageView);
+      return isPageRendered(this.currentPageView) &&
+        isPageRendered(this.currentRightSidePageView);
     },
 
     _updateLoadingIcons: function pdfViewer_updateLoadingIcons(currentLoadingIconVisible) {
       var classListOperation =
-        (currentLoadingIconVisible || this.isCurrentPageRendering) ? 'add' : 'remove';
+        (currentLoadingIconVisible || !this.isCurrentPageRendered) ? 'add' : 'remove';
       this.container.classList[classListOperation]('rendering');
     },
 
