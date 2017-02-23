@@ -211,7 +211,8 @@ var PDFPageView = (function PDFPageViewClosure() {
                                    this.annotationLayer.div) || null;
       for (var i = childNodes.length - 1; i >= 0; i--) {
         var node = childNodes[i];
-        if (currentZoomLayerNode === node || currentAnnotationNode === node) {
+        if (currentZoomLayerNode === node || currentAnnotationNode === node ||
+            this.loadingIconDiv === node) {
           continue;
         }
         div.removeChild(node);
@@ -242,13 +243,17 @@ var PDFPageView = (function PDFPageViewClosure() {
         this.zoomLayer = null;
       }
 
-      this.loadingIconDiv = document.createElement('div');
-      this.loadingIconDiv.className = 'loadingIcon';
-      var loadingIconImage = document.createElement('img');
-      loadingIconImage.className = 'loadingIconImage';
-      loadingIconImage.setAttribute('src', 'images/loading-icon.gif');
-      this.loadingIconDiv.appendChild(loadingIconImage);
-      div.appendChild(this.loadingIconDiv);
+      if (!this.loadingIconDiv) {
+        this.loadingIconDiv = document.createElement('div');
+        this.loadingIconDiv.className = 'loadingIcon';
+        var loadingIconImage = document.createElement('img');
+        loadingIconImage.className = 'loadingIconImage';
+        loadingIconImage.setAttribute('src', 'images/loading-icon.gif');
+        this.loadingIconDiv.appendChild(loadingIconImage);
+        div.appendChild(this.loadingIconDiv);
+      } else {
+        this.loadingIconDiv.classList.remove('hidden');
+      }
       this.eventBus.dispatch('loadingIconVisibilityChanged', {
         pageNumber: this.id,
         visible: true,
@@ -494,9 +499,8 @@ var PDFPageView = (function PDFPageViewClosure() {
 
         self.renderingState = RenderingStates.FINISHED;
 
-        if (self.loadingIconDiv) {
-          div.removeChild(self.loadingIconDiv);
-          delete self.loadingIconDiv;
+        if (self.loadingIconDiv && !self.loadingIconDiv.classList.contains('hidden')) {
+          self.loadingIconDiv.classList.add('hidden');
           self.eventBus.dispatch('loadingIconVisibilityChanged', {
             pageNumber: self.id,
             visible: false,
@@ -599,11 +603,15 @@ var PDFPageView = (function PDFPageViewClosure() {
       canvas.setAttribute('hidden', 'hidden');
       var isCanvasHidden = true;
       var showCanvas = function () {
+        if (!this.paintTask) {
+          // Drawing is cancelled!
+          return;
+        }
         if (isCanvasHidden) {
           canvas.removeAttribute('hidden');
           isCanvasHidden = false;
         }
-      };
+      }.bind(this);
 
       canvasWrapper.appendChild(canvas);
       this.canvas = canvas;
@@ -661,6 +669,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       };
       var renderTask = this.pdfPage.render(renderContext);
       renderTask.onContinue = function (cont) {
+        showCanvas();
         if (result.onRenderContinue) {
           result.onRenderContinue(cont);
         } else {
@@ -674,6 +683,7 @@ var PDFPageView = (function PDFPageViewClosure() {
           resolveRenderPromise(undefined);
         },
         function pdfPageRenderError(error) {
+          showCanvas();
           rejectRenderPromise(error);
         }
       );

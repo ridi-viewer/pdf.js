@@ -209,6 +209,22 @@ var PDFViewer = (function pdfViewer() {
       this._defaultAdjacentPagesToDraw = Math.max(val, 0);
     },
 
+    temporarilyDisablePreDrawing: function PDFViewer_temporarilyDisablePreDrawing(duration) {
+      duration = duration || 10000;
+      var defaultVerticalTolerance = this.defaultVerticalTolerance;
+      var defaultAdjacentPagesToDraw = this.defaultAdjacentPagesToDraw;
+      this.defaultVerticalTolerance = 0;
+      this.defaultAdjacentPagesToDraw = 0;
+      if (this._disablePreDrawingTimeout) {
+        clearTimeout(this._disablePreDrawingTimeout);
+      }
+      this._disablePreDrawingTimeout = setTimeout(function() {
+        this.defaultVerticalTolerance = defaultVerticalTolerance;
+        this.defaultAdjacentPagesToDraw = defaultAdjacentPagesToDraw;
+        this._disablePreDrawingTimeout = null;
+      }.bind(this), duration);
+    },
+
     get twoPageMode() {
       return this._twoPageMode;
     },
@@ -677,24 +693,25 @@ var PDFViewer = (function pdfViewer() {
      * but other visible (but not current) pages may be still being rendered.
      * Hiding both loadingIconOverlay and loadingIconDiv would be inappropriate in such situations.
      */
-    get isCurrentPageRendering() {
-      function isPageRendering(pageView) {
-        return (pageView ? !!pageView.loadingIconDiv : false);
+    get isCurrentPageRendered() {
+      function isPageRendered(pageView) {
+        // Must return true as default, as this.currentRightSidePageView may be null
+        return pageView ? (pageView.renderingState === RenderingStates.FINISHED) : true;
       }
 
       if (this.isLookingAtLeftSidePage) {
-        return isPageRendering(this.currentPageView);
+        return isPageRendered(this.currentPageView);
       } else if (this.isLookingAtRightSidePage) {
-        return isPageRendering(this.currentRightSidePageView);
+        return isPageRendered(this.currentRightSidePageView);
       }
       // When the user is looking at ambiguous location.
-      return isPageRendering(this.currentPageView) ||
-        isPageRendering(this.currentRightSidePageView);
+      return isPageRendered(this.currentPageView) &&
+        isPageRendered(this.currentRightSidePageView);
     },
 
     _updateLoadingIcons: function pdfViewer_updateLoadingIcons(currentLoadingIconVisible) {
       var classListOperation =
-        (currentLoadingIconVisible || this.isCurrentPageRendering) ? 'add' : 'remove';
+        (currentLoadingIconVisible || !this.isCurrentPageRendered) ? 'add' : 'remove';
       this.container.classList[classListOperation]('rendering');
     },
 
@@ -1066,6 +1083,14 @@ var PDFViewer = (function pdfViewer() {
         source: this,
         location: this._location
       });
+    },
+
+    forceRefresh: function () {
+      this._cancelRendering();
+      this._pages.forEach(function (page) {
+        page.update();
+      });
+      this.update();
     },
 
     containsElement: function (element) {

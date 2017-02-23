@@ -103,7 +103,7 @@ var animationStarted = uiUtilsLib.animationStarted;
 var localized = uiUtilsLib.localized;
 var RendererType = uiUtilsLib.RendererType;
 
-var DEFAULT_SCALE_DELTA = 1.014;
+var DEFAULT_SCALE_DELTA = 1.0025;
 var DISABLE_AUTO_FETCH_LOADING_BAR_TIMEOUT = 5000;
 
 function configure(PDFJS) {
@@ -446,12 +446,12 @@ var PDFViewerApplication = {
     this.initialize(config).then(webViewerInitialized);
   },
 
-  // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY (12 ticks)
+  // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY
   zoomIn: function pdfViewZoomIn(ticks) {
     // Note : this may collide with page-fit scale approximation if you set 0.995 more closer to 1
     var shouldApproximateToOriginalScale = this.pdfViewer.currentScale < 0.995;
     if (ticks === undefined) {
-      ticks = 12;
+      ticks = 120;
     }
 
     var newScale = this.pdfViewer.currentScale;
@@ -470,7 +470,7 @@ var PDFViewerApplication = {
   zoomOut: function pdfViewZoomOut(ticks) {
     var shouldApproximateToOriginalScale = this.pdfViewer.currentScale > 1.005;
     if (ticks === undefined) {
-      ticks = 12;
+      ticks = 120;
     }
 
     var newScale = this.pdfViewer.currentScale;
@@ -2125,7 +2125,7 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
   return false;
 }
 
-var zoomDisabled = false, zoomDisabledTimeout;
+var useOnlyCssZoomTimeout;
 function handleZoomByWheel(evt) {
   var support = PDFViewerApplication.supportedMouseWheelZoomModifierKeys;
   if ((evt.ctrlKey && !support.ctrlKey) ||
@@ -2134,10 +2134,6 @@ function handleZoomByWheel(evt) {
   }
   // Only zoom the pages, not the entire viewer.
   evt.preventDefault();
-  // NOTE: this check must be placed *after* preventDefault.
-  if (zoomDisabled) {
-    return;
-  }
 
   var modifiedClientY = evt.clientY;
   var currentPageId = PDFViewerApplication.page;
@@ -2154,13 +2150,25 @@ function handleZoomByWheel(evt) {
   }
 
   // 1 physical mouse wheel move (not from touch devices) -> += 120 wheelDeltaY
-  var MOUSE_WHEEL_DELTA_FACTOR = 10;
+  var MOUSE_WHEEL_DELTA_FACTOR = 1;
   var ticks = (evt.type === 'DOMMouseScroll') ? -evt.detail :
               evt.wheelDelta / MOUSE_WHEEL_DELTA_FACTOR;
   var direction = (ticks < 0) ? 'zoomOut' : 'zoomIn';
   var previousScale = pdfViewer.currentScale;
 
+  // For smooth zooming.
+  pdfjsLib.PDFJS.useOnlyCssZoom = true;
+  pdfViewer.temporarilyDisablePreDrawing();
   PDFViewerApplication[direction](Math.abs(ticks));
+  if (useOnlyCssZoomTimeout) {
+    clearTimeout(useOnlyCssZoomTimeout);
+  }
+  useOnlyCssZoomTimeout = setTimeout(function() {
+    pdfjsLib.PDFJS.useOnlyCssZoom = false;
+    pdfViewer.temporarilyDisablePreDrawing();
+    pdfViewer.forceRefresh();
+    useOnlyCssZoomTimeout = null;
+  }, 150);
 
   var currentScale = pdfViewer.currentScale;
   if (previousScale !== currentScale) {
@@ -2208,12 +2216,6 @@ function handleScrollByWheel(evt) {
       pdfViewer.container.scrollTop -= evt.wheelDeltaY;
       pdfViewer.container.scrollLeft -= evt.wheelDeltaX;
     }
-
-    zoomDisabled = true;
-    clearTimeout(zoomDisabledTimeout);
-    zoomDisabledTimeout = setTimeout(function () {
-      zoomDisabled = false;
-    }, 13);
   }
 }
 
