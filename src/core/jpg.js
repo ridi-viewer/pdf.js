@@ -26,6 +26,7 @@
   }
 }(this, function (exports, sharedUtil) {
 
+var warn = sharedUtil.warn;
 var error = sharedUtil.error;
 
 /**
@@ -329,13 +330,12 @@ var JpegImage = (function JpegImageClosure() {
     } else {
       mcuExpected = mcusPerLine * frame.mcusPerColumn;
     }
-    if (!resetInterval) {
-      resetInterval = mcuExpected;
-    }
 
     var h, v;
     while (mcu < mcuExpected) {
       // reset interval stuff
+      var mcuToRead = resetInterval ?
+        Math.min(mcuExpected - mcu, resetInterval) : mcuExpected;
       for (i = 0; i < componentsLength; i++) {
         components[i].pred = 0;
       }
@@ -343,12 +343,12 @@ var JpegImage = (function JpegImageClosure() {
 
       if (componentsLength === 1) {
         component = components[0];
-        for (n = 0; n < resetInterval; n++) {
+        for (n = 0; n < mcuToRead; n++) {
           decodeBlock(component, decodeFn, mcu);
           mcu++;
         }
       } else {
-        for (n = 0; n < resetInterval; n++) {
+        for (n = 0; n < mcuToRead; n++) {
           for (i = 0; i < componentsLength; i++) {
             component = components[i];
             h = component.h;
@@ -604,8 +604,28 @@ var JpegImage = (function JpegImageClosure() {
       }
 
       function readDataBlock() {
+        function isValidMarkerAt(pos) {
+          if (pos < data.length - 1) {
+            return (data[pos] === 0xFF &&
+                    data[pos + 1] >= 0xC0 && data[pos + 1] <= 0xFE);
+          }
+          return true;
+        }
+
         var length = readUint16();
-        var array = data.subarray(offset, offset + length - 2);
+        var endOffset = offset + length - 2;
+
+        if (!isValidMarkerAt(endOffset)) {
+          warn('readDataBlock - incorrect length, next marker is: ' +
+               (data[endOffset] << 8 | data[endOffset + 1]).toString('16'));
+          var pos = offset;
+          while (!isValidMarkerAt(pos)) {
+            pos++;
+          }
+          endOffset = pos;
+        }
+
+        var array = data.subarray(offset, endOffset);
         offset += array.length;
         return array;
       }

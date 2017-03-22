@@ -726,6 +726,20 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue8125",
+       "file": "pdfs/issue8125.pdf",
+       "md5": "2073d699ea82156682542f811300b3e8",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue8169",
+       "file": "pdfs/issue8169.pdf",
+       "md5": "62fd6479f9e1c8c5ce8cba6b1781d0a5",
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
+    },
     {  "id": "txt2pdf",
        "file": "pdfs/txt2pdf.pdf",
        "md5": "02cefa0f5e8d96313bb05163b2f88c8c",
@@ -1318,6 +1332,15 @@
        "lastPage": 6,
        "type": "eq"
     },
+    {  "id": "issue8088",
+       "file": "pdfs/issue8088.pdf",
+       "md5": "5bbc33c7433799487518eb0d8094348c",
+       "rounds": 1,
+       "link": false,
+       "firstPage": 1,
+       "lastPage": 3,
+       "type": "eq"
+    },
     {  "id": "bug866395",
        "file": "pdfs/bug866395.pdf",
        "md5": "f03bc77e84637241980b09a0a220f575",
@@ -1889,6 +1912,13 @@
       "rounds": 1,
       "type": "eq"
     },
+    {  "id": "issue8117",
+       "file": "pdfs/issue8117.pdf",
+       "md5": "0c805ae480dd523148a16fe7ed0fc867",
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
+    },
     {  "id": "issue7855",
        "file": "pdfs/issue7855.pdf",
        "md5": "290d4d5da041ffbcb1ea5d3b0ed8ee91",
@@ -2075,6 +2105,13 @@
        "link": false,
        "type": "eq",
        "about": "Inline JPEG images."
+    },
+    {  "id": "issue7828",
+       "file": "pdfs/issue7828.pdf",
+       "md5": "462f96c877f5761fc3176156e3526184",
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
     },
     {  "id": "issue1655",
        "file": "pdfs/issue1655r.pdf",
@@ -3385,6 +3422,12 @@
     {  "id": "font_ascent_descent",
        "file": "pdfs/font_ascent_descent.pdf",
        "md5": "c0048a7735010002b998c112335e47bf",
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue8097",
+       "file": "pdfs/issue8097_reduced.pdf",
+       "md5": "ced0e2d88cfd5b4d3a55d937ea288af1",
        "rounds": 1,
        "type": "eq"
     }

@@ -12,9 +12,9 @@
 
   globals: {
     "PDFJSDev": false,
-    "require": false,
     "exports": false,
     "RidiPdfViewer": false,
+    "SystemJS": false,
   },
 
   "rules": {
@@ -74,7 +74,9 @@
     "no-useless-call": "error",
     "no-useless-concat": "error",
     "wrap-iife": ["error", "any"],
-    "yoda": ["error", "never", { "onlyEquality": true, }],
+    "yoda": ["error", "never", {
+      "exceptRange": true,
+    }],
 
     // Strict Mode
     "strict": ["error", "global"],

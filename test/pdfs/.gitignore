@@ -46,6 +46,8 @@
 !issue7872.pdf
 !issue7901.pdf
 !issue8061.pdf
+!issue8088.pdf
+!issue8125.pdf
 !bad-PageLabels.pdf
 !filled-background.pdf
 !ArabicCIDTrueType.pdf
@@ -274,3 +276,4 @@
 !operator-in-TJ-array.pdf
 !issue7878.pdf
 !font_ascent_descent.pdf
+!issue8097_reduced.pdf
