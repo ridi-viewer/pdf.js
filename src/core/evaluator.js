@@ -538,7 +538,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       }
 
       var self = this;
-      return this.loadFont(fontName, fontRef, this.xref, resources).then(
+      return this.loadFont(fontName, fontRef, resources).then(
           function (translated) {
         if (!translated.font.isType3Font) {
           return translated;
@@ -595,7 +595,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
     setGState: function PartialEvaluator_setGState(resources, gState,
                                                    operatorList, task,
-                                                   xref, stateManager) {
+                                                   stateManager) {
       // This array holds the converted/processed state data.
       var gStateObj = [];
       var gStateKeys = gState.getKeys();
@@ -678,14 +678,13 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       });
     },
 
-    loadFont: function PartialEvaluator_loadFont(fontName, font, xref,
-                                                 resources) {
-
+    loadFont: function PartialEvaluator_loadFont(fontName, font, resources) {
       function errorFont() {
         return Promise.resolve(new TranslatedFont('g_font_error',
           new ErrorFont('Font ' + fontName + ' is not available'), font));
       }
-      var fontRef;
+
+      var fontRef, xref = this.xref;
       if (font) { // Loading by ref.
         assert(isRef(font));
         fontRef = font;
@@ -720,7 +719,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       var fontCapability = createPromiseCapability();
 
-      var preEvaluatedFont = this.preEvaluateFont(font, xref);
+      var preEvaluatedFont = this.preEvaluateFont(font);
       var descriptor = preEvaluatedFont.descriptor;
 
       var fontRefIsRef = isRef(fontRef), fontID;
@@ -790,7 +789,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       // TODO move promises into translate font
       var translatedPromise;
       try {
-        translatedPromise = this.translateFont(preEvaluatedFont, xref);
+        translatedPromise = this.translateFont(preEvaluatedFont);
       } catch (e) {
         translatedPromise = Promise.reject(e);
       }
@@ -844,7 +843,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     },
 
     handleColorN: function PartialEvaluator_handleColorN(operatorList, fn, args,
-          cs, patterns, resources, task, xref) {
+                                                         cs, patterns,
+                                                         resources, task) {
       // compile tiling patterns
       var patternName = args[args.length - 1];
       // SCN/scn applies patterns along with normal colors
@@ -861,7 +861,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         } else if (typeNum === SHADING_PATTERN) {
           var shading = dict.get('Shading');
           var matrix = dict.getArray('Matrix');
-          pattern = Pattern.parseShading(shading, matrix, xref, resources,
+          pattern = Pattern.parseShading(shading, matrix, this.xref, resources,
                                          this.handler);
           operatorList.addOp(fn, pattern.getIR());
           return Promise.resolve();
@@ -1075,7 +1075,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               cs = stateManager.state.fillColorSpace;
               if (cs.name === 'Pattern') {
                 next(self.handleColorN(operatorList, OPS.setFillColorN, args,
-                     cs, patterns, resources, task, xref));
+                                       cs, patterns, resources, task));
                 return;
               }
               args = cs.getRgb(args, 0);
@@ -1085,7 +1085,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               cs = stateManager.state.strokeColorSpace;
               if (cs.name === 'Pattern') {
                 next(self.handleColorN(operatorList, OPS.setStrokeColorN, args,
-                     cs, patterns, resources, task, xref));
+                                       cs, patterns, resources, task));
                 return;
               }
               args = cs.getRgb(args, 0);
@@ -1094,14 +1094,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
             case OPS.shadingFill:
               var shadingRes = resources.get('Shading');
-              if (!shadingRes) {
-                error('No shading resource found');
-              }
+              assert(shadingRes, 'No shading resource found');
 
               var shading = shadingRes.get(args[0].name);
-              if (!shading) {
-                error('No shading object found');
-              }
+              assert(shading, 'No shading object found');
 
               var shadingFill = Pattern.parseShading(shading, null, xref,
                 resources, self.handler);
@@ -1118,8 +1114,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               }
 
               var gState = extGState.get(dictName.name);
-              next(self.setGState(resources, gState, operatorList, task, xref,
-                   stateManager));
+              next(self.setGState(resources, gState, operatorList, task,
+                                  stateManager));
               return;
             case OPS.moveTo:
             case OPS.lineTo:
@@ -1326,7 +1322,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       }
 
       function handleSetFont(fontName, fontRef) {
-        return self.loadFont(fontName, fontRef, xref, resources).
+        return self.loadFont(fontName, fontRef, resources).
           then(function (translated) {
             textState.font = translated.font;
             textState.fontMatrix = translated.font.fontMatrix ||
@@ -1694,7 +1690,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
     extractDataStructures:
         function PartialEvaluator_extractDataStructures(dict, baseDict,
-                                                        xref, properties) {
+                                                        properties) {
+      var xref = this.xref;
       // 9.10.2
       var toUnicode = (dict.get('ToUnicode') || baseDict.get('ToUnicode'));
       var toUnicodePromise = toUnicode ?
@@ -2009,9 +2006,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       return result;
     },
 
-    extractWidths: function PartialEvaluator_extractWidths(dict, xref,
-                                                           descriptor,
+    extractWidths: function PartialEvaluator_extractWidths(dict, descriptor,
                                                            properties) {
+      var xref = this.xref;
       var glyphsWidths = [];
       var defaultWidth = 0;
       var glyphsVMetrics = [];
@@ -2176,7 +2173,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       return widths;
     },
 
-    preEvaluateFont: function PartialEvaluator_preEvaluateFont(dict, xref) {
+    preEvaluateFont: function PartialEvaluator_preEvaluateFont(dict) {
       var baseDict = dict;
       var type = dict.get('Subtype');
       assert(isName(type), 'invalid font Subtype');
@@ -2189,10 +2186,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         //  - set the type according to the descendant font
         //  - get the FontDescriptor from the descendant font
         var df = dict.get('DescendantFonts');
-        if (!df) {
-          error('Descendant fonts are not specified');
-        }
-        dict = (isArray(df) ? xref.fetchIfRef(df[0]) : df);
+        assert(df, 'Descendant fonts are not specified');
+        dict = (isArray(df) ? this.xref.fetchIfRef(df[0]) : df);
 
         type = dict.get('Subtype');
         assert(isName(type), 'invalid font Subtype');
@@ -2262,8 +2257,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       };
     },
 
-    translateFont: function PartialEvaluator_translateFont(preEvaluatedFont,
-                                                           xref) {
+    translateFont: function PartialEvaluator_translateFont(preEvaluatedFont) {
       var baseDict = preEvaluatedFont.baseDict;
       var dict = preEvaluatedFont.dict;
       var composite = preEvaluatedFont.composite;
@@ -2284,9 +2278,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           // FontDescriptor was not required.
           // This case is here for compatibility.
           var baseFontName = dict.get('BaseFont');
-          if (!isName(baseFontName)) {
-            error('Base font is not specified');
-          }
+          assert(isName(baseFontName), 'Base font is not specified');
 
           // Using base font name as a font name.
           baseFontName = baseFontName.name.replace(/[,_]/g, '-');
@@ -2309,7 +2301,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
             firstChar: 0,
             lastChar: maxCharIndex
           };
-          return this.extractDataStructures(dict, dict, xref, properties).then(
+          return this.extractDataStructures(dict, dict, properties).then(
               function (properties) {
             properties.widths = this.buildCharCodeToWidth(metrics.widths,
                                                           properties);
@@ -2412,9 +2404,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       }
 
       return cMapPromise.then(function () {
-        return this.extractDataStructures(dict, baseDict, xref, properties);
+        return this.extractDataStructures(dict, baseDict, properties);
       }.bind(this)).then(function (properties) {
-        this.extractWidths(dict, xref, descriptor, properties);
+        this.extractWidths(dict, descriptor, properties);
 
         if (type === 'Type3') {
           properties.isType3Font = true;
