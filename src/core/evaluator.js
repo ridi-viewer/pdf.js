@@ -136,17 +136,26 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       if (image instanceof JpxStream) {
         decodePromise = this.handler.sendWithPromise('JpxDecode', [dict.objId, image.getIR()]);
+        var that = this;
 
         return decodePromise.then(function (message) {
-          var data = message.data;
-          if (message.success) {
-            dict.remove('Filter');
-            dict.remove('ColorSpace');
-            dict.set('NumComps', message.numComps);
-            dict.set('BitsPerComponent', message.bitsPerComponent);
-            return new Stream(data, 0, data.length, dict);
+          var colorSpace = dict.get('ColorSpace', 'CS');
+          colorSpace = ColorSpace.parse(colorSpace, that.xref, that.resources);
+          if (colorSpace && message.numComps !== colorSpace.numComps) {
+            console.warn('Unexpected numComps. Failing back to jpx.js...');
+            image.stream.reset();
+            return image;
           }
-          return new JpxStream(new Stream(data, 0, data.length, dict), data.length, dict);
+          // Already decoded the JPX stream!
+          dict.remove('Filter');
+          // May have been downsampled from bpc === 16 -> bpc === 8
+          dict.set('BitsPerComponent', message.bitsPerComponent);
+          var decodedData = message.decodedData;
+          return new Stream(decodedData, 0, decodedData.length, dict);
+        }, function (err) {
+          console.warn(err);
+          image.stream.reset();
+          return image;
         });
       }
       // JPEGs

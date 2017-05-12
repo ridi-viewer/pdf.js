@@ -1822,9 +1822,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 decodedImageDataString = atob(decodedImageDataString);
                 var decodedImageDataStringLength = decodedImageDataString.length;
                 if (decodedImageDataStringLength === 0) {
-                  console.warn('Native JPX (JPEG2000) decoding failed. Falling back to jpx.js..');
                   nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
-                  resolve({ success: false, data: imageData });
+                  reject('Native JPX (JPEG2000) decoding failed. Falling back to jpx.js..');
                   return;
                 }
 
@@ -1836,8 +1835,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
 
                 nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
                 resolve({
-                  success: true,
-                  data: decodedImageData,
+                  decodedData: decodedImageData,
                   numComps: numComps,
                   bitsPerComponent: bitsPerComponent
                 });
