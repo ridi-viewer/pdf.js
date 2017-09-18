@@ -2058,6 +2058,13 @@ function webViewerPageChanged(e) {
  */
 var scrollCheckDisabled = false;
 var scrollCheckMinInterval = 100;
+var disableScrollCheck = function() {
+  // Prevent showing multiple popups at the same moment.
+  scrollCheckDisabled = true;
+  setTimeout(function() {
+    scrollCheckDisabled = false;
+  }, scrollCheckMinInterval);
+};
 function checkFirstAndLastPageOnScroll(scrollUp) {
   if (scrollCheckDisabled) {
     return true;
@@ -2089,12 +2096,8 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
 
         RidiPdfViewer.nativeViewer.jsScrollContentDownInFirstPage();
 
-        // Prevent showing multiple popups at the same moment.
-        scrollCheckDisabled = true;
-        setTimeout(function() {
-          scrollCheckDisabled = false;
-        }, scrollCheckMinInterval);
 
+        disableScrollCheck();
         return true;
       }
     }
@@ -2113,10 +2116,7 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
 
         RidiPdfViewer.nativeViewer.jsScrollContentUpInLastPage();
 
-        scrollCheckDisabled = true;
-        setTimeout(function() {
-          scrollCheckDisabled = false;
-        }, scrollCheckMinInterval);
+        disableScrollCheck();
         return true;
       }
     }
