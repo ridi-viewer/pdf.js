@@ -514,15 +514,18 @@ var PDFViewerApplication = {
     forcePageSwitchInScrollMode = (!!forcePageSwitchInScrollMode) || false;
     var pdfViewer = this.pdfViewer;
 
-    if (pdfViewer.currentPageNumber >= pdfViewer.pagesCount - 1 &&
-        checkFirstAndLastPageOnScroll(true)) {
-      return;
-    }
-
-    if (pdfViewer.isInPresentationMode || forcePageSwitchInScrollMode) {
+    let shouldSwitchPage = (pdfViewer.isInPresentationMode || forcePageSwitchInScrollMode) &&
+      (this.page + pdfViewer.pageSwitchUnit <= pdfViewer.pagesCount);
+    if (shouldSwitchPage) {
       this.page += pdfViewer.pageSwitchUnit;
     } else {
       pdfViewer.container.scrollTop += this.mouseWheelUnit;
+    }
+
+    if (pdfViewer.currentPageNumber >= pdfViewer.pagesCount - 3) {
+      checkFirstAndLastPageOnScroll(true, true);
+    } else if (pdfViewer.currentPageNumber <= 4) {
+      scrollReachedEndOnce = false;
     }
   },
 
@@ -530,14 +533,16 @@ var PDFViewerApplication = {
     forcePageSwitchInScrollMode = (!!forcePageSwitchInScrollMode) || false;
     var pdfViewer = this.pdfViewer;
 
-    if (pdfViewer.currentPageNumber <= 2 && checkFirstAndLastPageOnScroll(false)) {
-      return;
-    }
-
     if (pdfViewer.isInPresentationMode || forcePageSwitchInScrollMode) {
       this.page -= pdfViewer.pageSwitchUnit;
     } else {
       pdfViewer.container.scrollTop -= this.mouseWheelUnit;
+    }
+
+    if (pdfViewer.currentPageNumber <= 4) {
+      checkFirstAndLastPageOnScroll(false, true);
+    } else if (pdfViewer.currentPageNumber >= pdfViewer.pagesCount - 3) {
+      scrollReachedEndOnce = false;
     }
   },
 
@@ -2027,37 +2032,26 @@ function webViewerPageChanging(e) {
   }
 }
 
-var previousScrollTop = -1;
 function webViewerPageChanged(e) {
   if (PDFViewerApplication.pdfViewer.isInPresentationMode) {
     // Note : This also prevents page change while navigating with the hand tool.
     adjustPositionInsidePage(e.pageNumber);
   }
-
-  var viewerContainer = PDFViewerApplication.pdfViewer.container;
-  if (e.pageNumber <= 2 || e.pageNumber >= PDFViewerApplication.pagesCount - 1) {
-    previousScrollTop = viewerContainer.scrollTop;
-    viewerContainer.onscroll = function webViewerScrolled() {
-      checkFirstAndLastPageOnScroll();
-      previousScrollTop = viewerContainer.scrollTop;
-    };
-  } else {
-    previousScrollTop = -1;
-    viewerContainer.onscroll = null;
-  }
-
   RidiPdfViewer.nativeViewer.jsPageChanged(e.pageNumber);
 }
 
 /**
  * @param {Boolean} scrollUp - true if the content is going up, otherwise false.
  *                             If it's undefined, it is calculated by itself.
+ * @param {Boolean} forceEnableScrollCheck
  *
  * @returns {Boolean} - true if the user is trying to move the content down out of the first page,
  *                      or move the content up out of the last page. Otherwise returns false.
  */
 var scrollCheckDisabled = false;
-var scrollCheckMinInterval = 100;
+var scrollReachedEndOnce = false;
+// Mac trackpads will send numerous events for a single scroll gesture up to 2 seconds :( ...
+var scrollCheckMinInterval = 2000;
 var disableScrollCheck = function() {
   // Prevent showing multiple popups at the same moment.
   scrollCheckDisabled = true;
@@ -2065,19 +2059,22 @@ var disableScrollCheck = function() {
     scrollCheckDisabled = false;
   }, scrollCheckMinInterval);
 };
-function checkFirstAndLastPageOnScroll(scrollUp) {
-  if (scrollCheckDisabled) {
-    return true;
-  }
-
+function checkFirstAndLastPageOnScroll(scrollUp, forceEnableScrollCheck) {
   var pdfViewer = PDFViewerApplication.pdfViewer;
   var viewerContainer = pdfViewer.container;
   var containerRect, mouseUpEvt;
 
-  if (scrollUp === undefined) {
-    scrollUp = (viewerContainer.scrollTop - previousScrollTop > 0);
-  } else {
-    scrollUp = !!scrollUp;
+  if ((scrollUp && PDFViewerApplication.page <= 2) ||
+      (!scrollUp && PDFViewerApplication.page >= PDFViewerApplication.pagesCount - 1)) {
+    scrollReachedEndOnce = false;
+  }
+
+  if (forceEnableScrollCheck) {
+    scrollCheckDisabled = false;
+  }
+
+  if (scrollCheckDisabled) {
+    return false;
   }
 
   if (!scrollUp && PDFViewerApplication.page <= 2) {
@@ -2094,8 +2091,11 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
         mouseUpEvt.initEvent('mouseup', true, true);
         viewerContainer.dispatchEvent(mouseUpEvt);
 
-        RidiPdfViewer.nativeViewer.jsScrollContentDownInFirstPage();
-
+        if (scrollReachedEndOnce) {
+          RidiPdfViewer.nativeViewer.jsScrollContentDownInFirstPage();
+        } else {
+          scrollReachedEndOnce = true;
+        }
 
         disableScrollCheck();
         return true;
@@ -2114,7 +2114,11 @@ function checkFirstAndLastPageOnScroll(scrollUp) {
         mouseUpEvt.initEvent('mouseup', true, true);
         viewerContainer.dispatchEvent(mouseUpEvt);
 
-        RidiPdfViewer.nativeViewer.jsScrollContentUpInLastPage();
+        if (scrollReachedEndOnce) {
+          RidiPdfViewer.nativeViewer.jsScrollContentUpInLastPage();
+        } else {
+          scrollReachedEndOnce = true;
+        }
 
         disableScrollCheck();
         return true;
@@ -2195,9 +2199,8 @@ function handleZoomByWheel(evt) {
 
 function handleScrollByWheel(evt) {
   evt.preventDefault();
-  if (Math.abs(evt.wheelDeltaY) > 10 && checkFirstAndLastPageOnScroll(evt.wheelDeltaY < 0)) {
-    // Mac trackpad sometimes provides a very small value (.. like a noise)
-    return;
+  if (Math.abs(evt.wheelDeltaY) > 10) {
+    checkFirstAndLastPageOnScroll(evt.wheelDeltaY < 0);
   }
 
   var pdfViewer = PDFViewerApplication.pdfViewer;
