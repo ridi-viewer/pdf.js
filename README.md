@@ -9,7 +9,7 @@ rendering PDFs.
 ## Git remotes to add
 
 - mozilla-origin : https://github.com/mozilla/pdf.js.git
-- origin : git@github.com:ridibooks/pdf.js.git 
+- origin : git@github.com:ridi/pdf.js.git 
 
 Please take care of differences between RIDI viewer and the original PDF.js viewer, such as
 - Supporting two page display mode.
