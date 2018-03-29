@@ -12,34 +12,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* globals __non_webpack_require__ */
 
-'use strict';
+import {
+  createObjectURL, FONT_IDENTITY_MATRIX, IDENTITY_MATRIX, ImageKind, isNum, OPS,
+  Util, warn
+} from '../shared/util';
+import { DOMSVGFactory } from './dom_utils';
+import isNodeJS from '../shared/is_node';
 
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/display/svg', ['exports', 'pdfjs/shared/util'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'));
-  } else {
-    factory((root.pdfjsDisplaySVG = {}), root.pdfjsSharedUtil);
-  }
-}(this, function (exports, sharedUtil) {
-if (typeof PDFJSDev === 'undefined' ||
-    PDFJSDev.test('GENERIC || SINGLE_FILE')) {
-var FONT_IDENTITY_MATRIX = sharedUtil.FONT_IDENTITY_MATRIX;
-var IDENTITY_MATRIX = sharedUtil.IDENTITY_MATRIX;
-var ImageKind = sharedUtil.ImageKind;
-var OPS = sharedUtil.OPS;
-var Util = sharedUtil.Util;
-var isNum = sharedUtil.isNum;
-var isArray = sharedUtil.isArray;
-var warn = sharedUtil.warn;
-var createObjectURL = sharedUtil.createObjectURL;
+var SVGGraphics = function() {
+  throw new Error('Not implemented: SVGGraphics');
+};
+
+if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
 
 var SVG_DEFAULTS = {
   fontStyle: 'normal',
   fontWeight: 'normal',
-  fillColor: '#000000'
+  fillColor: '#000000',
 };
 
 var convertImgDataToPng = (function convertImgDataToPngClosure() {
@@ -108,71 +99,49 @@ var convertImgDataToPng = (function convertImgDataToPngClosure() {
     return (b << 16) | a;
   }
 
-  function encode(imgData, kind, forceDataSchema) {
-    var width = imgData.width;
-    var height = imgData.height;
-    var bitDepth, colorType, lineSize;
-    var bytes = imgData.data;
-
-    switch (kind) {
-      case ImageKind.GRAYSCALE_1BPP:
-        colorType = 0;
-        bitDepth = 1;
-        lineSize = (width + 7) >> 3;
-        break;
-      case ImageKind.RGB_24BPP:
-        colorType = 2;
-        bitDepth = 8;
-        lineSize = width * 3;
-        break;
-      case ImageKind.RGBA_32BPP:
-        colorType = 6;
-        bitDepth = 8;
-        lineSize = width * 4;
-        break;
-      default:
-        throw new Error('invalid format');
+  /**
+   * @param {Uint8Array} literals The input data.
+   * @returns {Uint8Array} The DEFLATE-compressed data stream in zlib format.
+   *   This is the required format for compressed streams in the PNG format:
+   *   http://www.libpng.org/pub/png/spec/1.2/PNG-Compression.html
+   */
+  function deflateSync(literals) {
+    if (!isNodeJS()) {
+      // zlib is certainly not available outside of Node.js. We can either use
+      // the pako library for client-side DEFLATE compression, or use the canvas
+      // API of the browser to obtain a more optimal PNG file.
+      return deflateSyncUncompressed(literals);
     }
-
-    // prefix every row with predictor 0
-    var literals = new Uint8Array((1 + lineSize) * height);
-    var offsetLiterals = 0, offsetBytes = 0;
-    var y, i;
-    for (y = 0; y < height; ++y) {
-      literals[offsetLiterals++] = 0; // no prediction
-      literals.set(bytes.subarray(offsetBytes, offsetBytes + lineSize),
-                   offsetLiterals);
-      offsetBytes += lineSize;
-      offsetLiterals += lineSize;
-    }
-
-    if (kind === ImageKind.GRAYSCALE_1BPP) {
-      // inverting for B/W
-      offsetLiterals = 0;
-      for (y = 0; y < height; y++) {
-        offsetLiterals++; // skipping predictor
-        for (i = 0; i < lineSize; i++) {
-          literals[offsetLiterals++] ^= 0xFF;
-        }
+    try {
+      // NOTE: This implementation is far from perfect, but already way better
+      // than not applying any compression.
+      //
+      // A better algorithm will try to choose a good predictor/filter and
+      // then choose a suitable zlib compression strategy (e.g. 3,Z_RLE).
+      //
+      // Node v0.11.12 zlib.deflateSync is introduced (and returns a Buffer).
+      // Node v3.0.0   Buffer inherits from Uint8Array.
+      // Node v8.0.0   zlib.deflateSync accepts Uint8Array as input.
+      var input;
+        // eslint-disable-next-line no-undef
+      if (parseInt(process.versions.node) >= 8) {
+        input = literals;
+      } else {
+        // eslint-disable-next-line no-undef
+        input = new Buffer(literals);
       }
+      var output = __non_webpack_require__('zlib')
+        .deflateSync(input, { level: 9, });
+      return output instanceof Uint8Array ? output : new Uint8Array(output);
+    } catch (e) {
+      warn('Not compressing PNG because zlib.deflateSync is unavailable: ' + e);
     }
 
-    var ihdr = new Uint8Array([
-      width >> 24 & 0xff,
-      width >> 16 & 0xff,
-      width >> 8 & 0xff,
-      width & 0xff,
-      height >> 24 & 0xff,
-      height >> 16 & 0xff,
-      height >> 8 & 0xff,
-      height & 0xff,
-      bitDepth, // bit depth
-      colorType, // color type
-      0x00, // compression method
-      0x00, // filter method
-      0x00 // interlace method
-    ]);
+    return deflateSyncUncompressed(literals);
+  }
 
+  // An implementation of DEFLATE with compression level 0 (Z_NO_COMPRESSION).
+  function deflateSyncUncompressed(literals) {
     var len = literals.length;
     var maxBlockLength = 0xFFFF;
 
@@ -210,6 +179,75 @@ var convertImgDataToPng = (function convertImgDataToPngClosure() {
     idat[pi++] = adler >> 16 & 0xff;
     idat[pi++] = adler >> 8 & 0xff;
     idat[pi++] = adler & 0xff;
+    return idat;
+  }
+
+  function encode(imgData, kind, forceDataSchema, isMask) {
+    var width = imgData.width;
+    var height = imgData.height;
+    var bitDepth, colorType, lineSize;
+    var bytes = imgData.data;
+
+    switch (kind) {
+      case ImageKind.GRAYSCALE_1BPP:
+        colorType = 0;
+        bitDepth = 1;
+        lineSize = (width + 7) >> 3;
+        break;
+      case ImageKind.RGB_24BPP:
+        colorType = 2;
+        bitDepth = 8;
+        lineSize = width * 3;
+        break;
+      case ImageKind.RGBA_32BPP:
+        colorType = 6;
+        bitDepth = 8;
+        lineSize = width * 4;
+        break;
+      default:
+        throw new Error('invalid format');
+    }
+
+    // prefix every row with predictor 0
+    var literals = new Uint8Array((1 + lineSize) * height);
+    var offsetLiterals = 0, offsetBytes = 0;
+    var y, i;
+    for (y = 0; y < height; ++y) {
+      literals[offsetLiterals++] = 0; // no prediction
+      literals.set(bytes.subarray(offsetBytes, offsetBytes + lineSize),
+                   offsetLiterals);
+      offsetBytes += lineSize;
+      offsetLiterals += lineSize;
+    }
+
+    if (kind === ImageKind.GRAYSCALE_1BPP && isMask) {
+      // inverting for image masks
+      offsetLiterals = 0;
+      for (y = 0; y < height; y++) {
+        offsetLiterals++; // skipping predictor
+        for (i = 0; i < lineSize; i++) {
+          literals[offsetLiterals++] ^= 0xFF;
+        }
+      }
+    }
+
+    var ihdr = new Uint8Array([
+      width >> 24 & 0xff,
+      width >> 16 & 0xff,
+      width >> 8 & 0xff,
+      width & 0xff,
+      height >> 24 & 0xff,
+      height >> 16 & 0xff,
+      height >> 8 & 0xff,
+      height & 0xff,
+      bitDepth, // bit depth
+      colorType, // color type
+      0x00, // compression method
+      0x00, // filter method
+      0x00 // interlace method
+    ]);
+
+    var idat = deflateSync(literals);
 
     // PNG will consists: header, IHDR+data, IDAT+data, and IEND.
     var pngLength = PNG_HEADER.length + (CHUNK_WRAPPER_SIZE * 3) +
@@ -227,10 +265,10 @@ var convertImgDataToPng = (function convertImgDataToPngClosure() {
     return createObjectURL(data, 'image/png', forceDataSchema);
   }
 
-  return function convertImgDataToPng(imgData, forceDataSchema) {
+  return function convertImgDataToPng(imgData, forceDataSchema, isMask) {
     var kind = (imgData.kind === undefined ?
                 ImageKind.GRAYSCALE_1BPP : imgData.kind);
-    return encode(imgData, kind, forceDataSchema);
+    return encode(imgData, kind, forceDataSchema, isMask);
   };
 })();
 
@@ -288,12 +326,12 @@ var SVGExtraState = (function SVGExtraStateClosure() {
     setCurrentPoint: function SVGExtraState_setCurrentPoint(x, y) {
       this.x = x;
       this.y = y;
-    }
+    },
   };
   return SVGExtraState;
 })();
 
-var SVGGraphics = (function SVGGraphicsClosure() {
+SVGGraphics = (function SVGGraphicsClosure() {
   function opListToTree(opList) {
     var opTree = [];
     var tmp = [];
@@ -301,7 +339,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
 
     for (var x = 0; x < opListLen; x++) {
       if (opList[x].fn === 'save') {
-        opTree.push({'fnId': 92, 'fn': 'group', 'items': []});
+        opTree.push({ 'fnId': 92, 'fn': 'group', 'items': [], });
         tmp.push(opTree);
         opTree = opTree[opTree.length - 1].items;
         continue;
@@ -322,7 +360,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
    * @returns {string}
    */
   function pf(value) {
-    if (value === (value | 0)) { // integer number
+    if (Number.isInteger(value)) {
       return value.toString();
     }
     var s = value.toFixed(10);
@@ -366,12 +404,15 @@ var SVGGraphics = (function SVGGraphicsClosure() {
   }
 
   function SVGGraphics(commonObjs, objs, forceDataSchema) {
+    this.svgFactory = new DOMSVGFactory();
+
     this.current = new SVGExtraState();
     this.transformMatrix = IDENTITY_MATRIX; // Graphics state matrix
     this.transformStack = [];
     this.extraStack = [];
     this.commonObjs = commonObjs;
     this.objs = objs;
+    this.pendingClip = null;
     this.pendingEOFill = false;
 
     this.embedFonts = false;
@@ -380,7 +421,6 @@ var SVGGraphics = (function SVGGraphicsClosure() {
     this.forceDataSchema = !!forceDataSchema;
   }
 
-  var NS = 'http://www.w3.org/2000/svg';
   var XML_NS = 'http://www.w3.org/XML/1998/namespace';
   var XLINK_NS = 'http://www.w3.org/1999/xlink';
   var LINE_CAP_STYLES = ['butt', 'round', 'square'];
@@ -400,6 +440,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.transformMatrix = this.transformStack.pop();
       this.current = this.extraStack.pop();
 
+      this.pendingClip = null;
       this.tgrp = null;
     },
 
@@ -414,7 +455,6 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       var fnArrayLen = fnArray.length;
       var argsArray = operatorList.argsArray;
 
-      var self = this;
       for (var i = 0; i < fnArrayLen; i++) {
         if (OPS.dependency === fnArray[i]) {
           var deps = argsArray[i];
@@ -423,12 +463,12 @@ var SVGGraphics = (function SVGGraphicsClosure() {
             var common = obj.substring(0, 2) === 'g_';
             var promise;
             if (common) {
-              promise = new Promise(function(resolve) {
-                self.commonObjs.get(obj, resolve);
+              promise = new Promise((resolve) => {
+                this.commonObjs.get(obj, resolve);
               });
             } else {
-              promise = new Promise(function(resolve) {
-                self.objs.get(obj, resolve);
+              promise = new Promise((resolve) => {
+                this.objs.get(obj, resolve);
               });
             }
             this.current.dependencies.push(promise);
@@ -449,12 +489,12 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.viewport = viewport;
 
       var svgElement = this._initialize(viewport);
-      return this.loadDependencies(operatorList).then(function () {
+      return this.loadDependencies(operatorList).then(() => {
         this.transformMatrix = IDENTITY_MATRIX;
         var opTree = this.convertOpList(operatorList);
         this.executeOpTree(opTree);
         return svgElement;
-      }.bind(this));
+      });
     },
 
     convertOpList: function SVGGraphics_convertOpList(operatorList) {
@@ -470,7 +510,11 @@ var SVGGraphics = (function SVGGraphicsClosure() {
 
       for (var x = 0; x < fnArrayLen; x++) {
         var fnId = fnArray[x];
-        opList.push({'fnId': fnId, 'fn': REVOPS[fnId], 'args': argsArray[x]});
+        opList.push({
+          'fnId': fnId,
+          'fn': REVOPS[fnId],
+          'args': argsArray[x],
+        });
       }
       return opListToTree(opList);
     },
@@ -519,6 +563,9 @@ var SVGGraphics = (function SVGGraphicsClosure() {
           case OPS.setTextMatrix:
             this.setTextMatrix(args[0], args[1], args[2],
                                args[3], args[4], args[5]);
+            break;
+          case OPS.setTextRise:
+            this.setTextRise(args[0]);
             break;
           case OPS.setLineWidth:
             this.setLineWidth(args[0]);
@@ -595,6 +642,9 @@ var SVGGraphics = (function SVGGraphicsClosure() {
           case OPS.closeFillStroke:
             this.closeFillStroke();
             break;
+          case OPS.closeEOFillStroke:
+            this.closeEOFillStroke();
+            break;
           case OPS.nextLine:
             this.nextLine();
             break;
@@ -638,13 +688,13 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.current.y = this.current.lineY = 0;
 
       current.xcoords = [];
-      current.tspan = document.createElementNS(NS, 'svg:tspan');
+      current.tspan = this.svgFactory.createElement('svg:tspan');
       current.tspan.setAttributeNS(null, 'font-family', current.fontFamily);
       current.tspan.setAttributeNS(null, 'font-size',
                                    pf(current.fontSize) + 'px');
       current.tspan.setAttributeNS(null, 'y', pf(-current.y));
 
-      current.txtElement = document.createElementNS(NS, 'svg:text');
+      current.txtElement = this.svgFactory.createElement('svg:text');
       current.txtElement.appendChild(current.tspan);
     },
 
@@ -653,9 +703,9 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.current.y = this.current.lineY = 0;
       this.current.textMatrix = IDENTITY_MATRIX;
       this.current.lineMatrix = IDENTITY_MATRIX;
-      this.current.tspan = document.createElementNS(NS, 'svg:tspan');
-      this.current.txtElement = document.createElementNS(NS, 'svg:text');
-      this.current.txtgrp = document.createElementNS(NS, 'svg:g');
+      this.current.tspan = this.svgFactory.createElement('svg:tspan');
+      this.current.txtElement = this.svgFactory.createElement('svg:text');
+      this.current.txtgrp = this.svgFactory.createElement('svg:g');
       this.current.xcoords = [];
     },
 
@@ -665,7 +715,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.current.y = this.current.lineY += y;
 
       current.xcoords = [];
-      current.tspan = document.createElementNS(NS, 'svg:tspan');
+      current.tspan = this.svgFactory.createElement('svg:tspan');
       current.tspan.setAttributeNS(null, 'font-family', current.fontFamily);
       current.tspan.setAttributeNS(null, 'font-size',
                                    pf(current.fontSize) + 'px');
@@ -700,14 +750,23 @@ var SVGGraphics = (function SVGGraphicsClosure() {
           x += -glyph * fontSize * 0.001;
           continue;
         }
-        current.xcoords.push(current.x + x * textHScale);
 
         var width = glyph.width;
         var character = glyph.fontChar;
-        var charWidth = width * widthAdvanceScale + charSpacing * fontDirection;
-        x += charWidth;
+        var spacing = (glyph.isSpace ? wordSpacing : 0) + charSpacing;
+        var charWidth = width * widthAdvanceScale + spacing * fontDirection;
 
+        if (!glyph.isInFont && !font.missingFile) {
+          x += charWidth;
+          // TODO: To assist with text selection, we should replace the missing
+          // character with a space character if charWidth is not zero.
+          // But we cannot just do "character = ' '", because the ' ' character
+          // might actually map to a different glyph.
+          continue;
+        }
+        current.xcoords.push(current.x + x * textHScale);
         current.tspan.textContent += character;
+        x += charWidth;
       }
       if (vertical) {
         current.y -= x * textHScale;
@@ -731,9 +790,17 @@ var SVGGraphics = (function SVGGraphicsClosure() {
         current.tspan.setAttributeNS(null, 'fill', current.fillColor);
       }
 
+      // Include the text rise in the text matrix since the `pm` function
+      // creates the SVG element's `translate` entry (work on a copy to avoid
+      // altering the original text matrix).
+      let textMatrix = current.textMatrix;
+      if (current.textRise !== 0) {
+        textMatrix = textMatrix.slice();
+        textMatrix[5] += current.textRise;
+      }
+
       current.txtElement.setAttributeNS(null, 'transform',
-                                        pm(current.textMatrix) +
-                                        ' scale(1, -1)');
+                                        pm(textMatrix) + ' scale(1, -1)');
       current.txtElement.setAttributeNS(XML_NS, 'xml:space', 'preserve');
       current.txtElement.appendChild(current.tspan);
       current.txtgrp.appendChild(current.txtElement);
@@ -748,7 +815,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
 
     addFontStyle: function SVGGraphics_addFontStyle(fontObj) {
       if (!this.cssStyle) {
-        this.cssStyle = document.createElementNS(NS, 'svg:style');
+        this.cssStyle = this.svgFactory.createElement('svg:style');
         this.cssStyle.setAttributeNS(null, 'type', 'text/css');
         this.defs.appendChild(this.cssStyle);
       }
@@ -790,7 +857,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       current.fontWeight = bold;
       current.fontStyle = italic;
 
-      current.tspan = document.createElementNS(NS, 'svg:tspan');
+      current.tspan = this.svgFactory.createElement('svg:tspan');
       current.tspan.setAttributeNS(null, 'y', pf(-current.y));
       current.xcoords = [];
     },
@@ -810,14 +877,20 @@ var SVGGraphics = (function SVGGraphicsClosure() {
     setMiterLimit: function SVGGraphics_setMiterLimit(limit) {
       this.current.miterLimit = limit;
     },
+    setStrokeAlpha: function SVGGraphics_setStrokeAlpha(strokeAlpha) {
+      this.current.strokeAlpha = strokeAlpha;
+    },
     setStrokeRGBColor: function SVGGraphics_setStrokeRGBColor(r, g, b) {
       var color = Util.makeCssRgb(r, g, b);
       this.current.strokeColor = color;
     },
+    setFillAlpha: function SVGGraphics_setFillAlpha(fillAlpha) {
+      this.current.fillAlpha = fillAlpha;
+    },
     setFillRGBColor: function SVGGraphics_setFillRGBColor(r, g, b) {
       var color = Util.makeCssRgb(r, g, b);
       this.current.fillColor = color;
-      this.current.tspan = document.createElementNS(NS, 'svg:tspan');
+      this.current.tspan = this.svgFactory.createElement('svg:tspan');
       this.current.xcoords = [];
     },
     setDash: function SVGGraphics_setDash(dashArray, dashPhase) {
@@ -828,7 +901,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
     constructPath: function SVGGraphics_constructPath(ops, args) {
       var current = this.current;
       var x = current.x, y = current.y;
-      current.path = document.createElementNS(NS, 'svg:path');
+      current.path = this.svgFactory.createElement('svg:path');
       var d = [];
       var opLength = ops.length;
 
@@ -881,16 +954,6 @@ var SVGGraphics = (function SVGGraphicsClosure() {
         }
       }
       current.path.setAttributeNS(null, 'd', d.join(' '));
-      current.path.setAttributeNS(null, 'stroke-miterlimit',
-                                  pf(current.miterLimit));
-      current.path.setAttributeNS(null, 'stroke-linecap', current.lineCap);
-      current.path.setAttributeNS(null, 'stroke-linejoin', current.lineJoin);
-      current.path.setAttributeNS(null, 'stroke-width',
-                                  pf(current.lineWidth) + 'px');
-      current.path.setAttributeNS(null, 'stroke-dasharray',
-                                  current.dashArray.map(pf).join(' '));
-      current.path.setAttributeNS(null, 'stroke-dashoffset',
-                                  pf(current.dashPhase) + 'px');
       current.path.setAttributeNS(null, 'fill', 'none');
 
       this._ensureTransformGroup().appendChild(current.path);
@@ -901,28 +964,30 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       current.setCurrentPoint(x, y);
     },
 
-    endPath: function SVGGraphics_endPath() {},
-
-    clip: function SVGGraphics_clip(type) {
+    endPath: function SVGGraphics_endPath() {
+      if (!this.pendingClip) {
+        return;
+      }
       var current = this.current;
       // Add current path to clipping path
       var clipId = 'clippath' + clipCount;
       clipCount++;
-      var clipPath = document.createElementNS(NS, 'svg:clipPath');
+      var clipPath = this.svgFactory.createElement('svg:clipPath');
       clipPath.setAttributeNS(null, 'id', clipId);
       clipPath.setAttributeNS(null, 'transform', pm(this.transformMatrix));
       var clipElement = current.element.cloneNode();
-      if (type === 'evenodd') {
+      if (this.pendingClip === 'evenodd') {
         clipElement.setAttributeNS(null, 'clip-rule', 'evenodd');
       } else {
         clipElement.setAttributeNS(null, 'clip-rule', 'nonzero');
       }
+      this.pendingClip = null;
       clipPath.appendChild(clipElement);
       this.defs.appendChild(clipPath);
 
       if (current.activeClipUrl) {
         // The previous clipping group content can go out of order -- resetting
-        // cached clipGroup's.
+        // cached clipGroups.
         current.clipGroup = null;
         this.extraStack.forEach(function (prev) {
           prev.clipGroup = null;
@@ -933,11 +998,17 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.tgrp = null;
     },
 
+    clip: function SVGGraphics_clip(type) {
+      this.pendingClip = type;
+    },
+
     closePath: function SVGGraphics_closePath() {
       var current = this.current;
-      var d = current.path.getAttributeNS(null, 'd');
-      d += 'Z';
-      current.path.setAttributeNS(null, 'd', d);
+      if (current.path) {
+        var d = current.path.getAttributeNS(null, 'd');
+        d += 'Z';
+        current.path.setAttributeNS(null, 'd', d);
+      }
     },
 
     setLeading: function SVGGraphics_setLeading(leading) {
@@ -977,6 +1048,12 @@ var SVGGraphics = (function SVGGraphicsClosure() {
           case 'Font':
             this.setFont(value);
             break;
+          case 'CA':
+            this.setStrokeAlpha(value);
+            break;
+          case 'ca':
+            this.setFillAlpha(value);
+            break;
           default:
             warn('Unimplemented graphic state ' + key);
             break;
@@ -986,19 +1063,40 @@ var SVGGraphics = (function SVGGraphicsClosure() {
 
     fill: function SVGGraphics_fill() {
       var current = this.current;
-      current.element.setAttributeNS(null, 'fill', current.fillColor);
+      if (current.element) {
+        current.element.setAttributeNS(null, 'fill', current.fillColor);
+        current.element.setAttributeNS(null, 'fill-opacity', current.fillAlpha);
+      }
     },
 
     stroke: function SVGGraphics_stroke() {
       var current = this.current;
-      current.element.setAttributeNS(null, 'stroke', current.strokeColor);
-      current.element.setAttributeNS(null, 'fill', 'none');
+
+      if (current.element) {
+        current.element.setAttributeNS(null, 'stroke', current.strokeColor);
+        current.element.setAttributeNS(null, 'stroke-opacity',
+                                       current.strokeAlpha);
+        current.element.setAttributeNS(null, 'stroke-miterlimit',
+                                       pf(current.miterLimit));
+        current.element.setAttributeNS(null, 'stroke-linecap', current.lineCap);
+        current.element.setAttributeNS(null, 'stroke-linejoin',
+                                       current.lineJoin);
+        current.element.setAttributeNS(null, 'stroke-width',
+                                       pf(current.lineWidth) + 'px');
+        current.element.setAttributeNS(null, 'stroke-dasharray',
+                                       current.dashArray.map(pf).join(' '));
+        current.element.setAttributeNS(null, 'stroke-dashoffset',
+                                       pf(current.dashPhase) + 'px');
+
+        current.element.setAttributeNS(null, 'fill', 'none');
+      }
     },
 
     eoFill: function SVGGraphics_eoFill() {
-      var current = this.current;
-      current.element.setAttributeNS(null, 'fill', current.fillColor);
-      current.element.setAttributeNS(null, 'fill-rule', 'evenodd');
+      if (this.current.element) {
+        this.current.element.setAttributeNS(null, 'fill-rule', 'evenodd');
+      }
+      this.fill();
     },
 
     fillStroke: function SVGGraphics_fillStroke() {
@@ -1009,7 +1107,9 @@ var SVGGraphics = (function SVGGraphicsClosure() {
     },
 
     eoFillStroke: function SVGGraphics_eoFillStroke() {
-      this.current.element.setAttributeNS(null, 'fill-rule', 'evenodd');
+      if (this.current.element) {
+        this.current.element.setAttributeNS(null, 'fill-rule', 'evenodd');
+      }
       this.fillStroke();
     },
 
@@ -1023,10 +1123,15 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       this.fillStroke();
     },
 
+    closeEOFillStroke() {
+      this.closePath();
+      this.eoFillStroke();
+    },
+
     paintSolidColorImageMask:
         function SVGGraphics_paintSolidColorImageMask() {
       var current = this.current;
-      var rect = document.createElementNS(NS, 'svg:rect');
+      var rect = this.svgFactory.createElement('svg:rect');
       rect.setAttributeNS(null, 'x', '0');
       rect.setAttributeNS(null, 'y', '0');
       rect.setAttributeNS(null, 'width', '1px');
@@ -1038,10 +1143,10 @@ var SVGGraphics = (function SVGGraphicsClosure() {
 
     paintJpegXObject: function SVGGraphics_paintJpegXObject(objId, w, h) {
       var imgObj = this.objs.get(objId);
-      var imgEl = document.createElementNS(NS, 'svg:image');
+      var imgEl = this.svgFactory.createElement('svg:image');
       imgEl.setAttributeNS(XLINK_NS, 'xlink:href', imgObj.src);
-      imgEl.setAttributeNS(null, 'width', imgObj.width + 'px');
-      imgEl.setAttributeNS(null, 'height', imgObj.height + 'px');
+      imgEl.setAttributeNS(null, 'width', pf(w));
+      imgEl.setAttributeNS(null, 'height', pf(h));
       imgEl.setAttributeNS(null, 'x', '0');
       imgEl.setAttributeNS(null, 'y', pf(-h));
       imgEl.setAttributeNS(null, 'transform',
@@ -1064,15 +1169,15 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       var width = imgData.width;
       var height = imgData.height;
 
-      var imgSrc = convertImgDataToPng(imgData, this.forceDataSchema);
-      var cliprect = document.createElementNS(NS, 'svg:rect');
+      var imgSrc = convertImgDataToPng(imgData, this.forceDataSchema, !!mask);
+      var cliprect = this.svgFactory.createElement('svg:rect');
       cliprect.setAttributeNS(null, 'x', '0');
       cliprect.setAttributeNS(null, 'y', '0');
       cliprect.setAttributeNS(null, 'width', pf(width));
       cliprect.setAttributeNS(null, 'height', pf(height));
       this.current.element = cliprect;
       this.clip('nonzero');
-      var imgEl = document.createElementNS(NS, 'svg:image');
+      var imgEl = this.svgFactory.createElement('svg:image');
       imgEl.setAttributeNS(XLINK_NS, 'xlink:href', imgSrc);
       imgEl.setAttributeNS(null, 'x', '0');
       imgEl.setAttributeNS(null, 'y', pf(-height));
@@ -1096,10 +1201,10 @@ var SVGGraphics = (function SVGGraphicsClosure() {
       var fillColor = current.fillColor;
 
       current.maskId = 'mask' + maskCount++;
-      var mask = document.createElementNS(NS, 'svg:mask');
+      var mask = this.svgFactory.createElement('svg:mask');
       mask.setAttributeNS(null, 'id', current.maskId);
 
-      var rect = document.createElementNS(NS, 'svg:rect');
+      var rect = this.svgFactory.createElement('svg:rect');
       rect.setAttributeNS(null, 'x', '0');
       rect.setAttributeNS(null, 'y', '0');
       rect.setAttributeNS(null, 'width', pf(width));
@@ -1115,16 +1220,16 @@ var SVGGraphics = (function SVGGraphicsClosure() {
 
     paintFormXObjectBegin:
         function SVGGraphics_paintFormXObjectBegin(matrix, bbox) {
-      if (isArray(matrix) && matrix.length === 6) {
+      if (Array.isArray(matrix) && matrix.length === 6) {
         this.transform(matrix[0], matrix[1], matrix[2],
                        matrix[3], matrix[4], matrix[5]);
       }
 
-      if (isArray(bbox) && bbox.length === 4) {
+      if (Array.isArray(bbox) && bbox.length === 4) {
         var width = bbox[2] - bbox[0];
         var height = bbox[3] - bbox[1];
 
-        var cliprect = document.createElementNS(NS, 'svg:rect');
+        var cliprect = this.svgFactory.createElement('svg:rect');
         cliprect.setAttributeNS(null, 'x', bbox[0]);
         cliprect.setAttributeNS(null, 'y', bbox[1]);
         cliprect.setAttributeNS(null, 'width', pf(width));
@@ -1141,24 +1246,17 @@ var SVGGraphics = (function SVGGraphicsClosure() {
     /**
      * @private
      */
-    _initialize: function SVGGraphics_initialize(viewport) {
-      // Create the SVG element.
-      var svg = document.createElementNS(NS, 'svg:svg');
-      svg.setAttributeNS(null, 'version', '1.1');
-      svg.setAttributeNS(null, 'width', viewport.width + 'px');
-      svg.setAttributeNS(null, 'height', viewport.height + 'px');
-      svg.setAttributeNS(null, 'preserveAspectRatio', 'none');
-      svg.setAttributeNS(null, 'viewBox', '0 0 ' + viewport.width +
-                                          ' ' + viewport.height);
+    _initialize(viewport) {
+      let svg = this.svgFactory.create(viewport.width, viewport.height);
 
       // Create the definitions element.
-      var definitions = document.createElementNS(NS, 'svg:defs');
+      let definitions = this.svgFactory.createElement('svg:defs');
       svg.appendChild(definitions);
       this.defs = definitions;
 
       // Create the root group element, which acts a container for all other
       // groups and applies the viewport transform.
-      var rootGroup = document.createElementNS(NS, 'svg:g');
+      let rootGroup = this.svgFactory.createElement('svg:g');
       rootGroup.setAttributeNS(null, 'transform', pm(viewport.transform));
       svg.appendChild(rootGroup);
 
@@ -1175,7 +1273,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
      */
     _ensureClipGroup: function SVGGraphics_ensureClipGroup() {
       if (!this.current.clipGroup) {
-        var clipGroup = document.createElementNS(NS, 'svg:g');
+        var clipGroup = this.svgFactory.createElement('svg:g');
         clipGroup.setAttributeNS(null, 'clip-path',
                                  this.current.activeClipUrl);
         this.svg.appendChild(clipGroup);
@@ -1189,7 +1287,7 @@ var SVGGraphics = (function SVGGraphicsClosure() {
      */
     _ensureTransformGroup: function SVGGraphics_ensureTransformGroup() {
       if (!this.tgrp) {
-        this.tgrp = document.createElementNS(NS, 'svg:g');
+        this.tgrp = this.svgFactory.createElement('svg:g');
         this.tgrp.setAttributeNS(null, 'transform', pm(this.transformMatrix));
         if (this.current.activeClipUrl) {
           this._ensureClipGroup().appendChild(this.tgrp);
@@ -1198,11 +1296,13 @@ var SVGGraphics = (function SVGGraphicsClosure() {
         }
       }
       return this.tgrp;
-    }
+    },
   };
   return SVGGraphics;
 })();
 
-exports.SVGGraphics = SVGGraphics;
 }
-}));
+
+export {
+  SVGGraphics,
+};

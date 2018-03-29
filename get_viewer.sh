@@ -1,13 +1,13 @@
 gulp clean &&
 (if [[ $1 == "-v" ]]
 then
-  gulp lintviewer
+  gulp lint-viewer
 else
   gulp lint
 fi) &&
 (if [[ $1 == "-v" ]]
 then
-  gulp genericviewer
+  gulp generic-viewer
 else
   gulp generic
 fi) &&

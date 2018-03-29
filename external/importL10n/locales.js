@@ -19,8 +19,8 @@ var fs = require('fs');
 var https = require('https');
 var path = require('path');
 
-// Defines all languages that have a translation at mozilla-aurora.
-// This is used in make.js for the importl10n command.
+// Defines all languages that have a translation at mozilla-central.
+// This is used in gulpfile.js for the `importl10n` command.
 var langCodes = ['ko'];
 
 function normalizeText(s) {
@@ -31,10 +31,9 @@ function downloadLanguageFiles(root, langCode, callback) {
   console.log('Downloading ' + langCode + '...');
 
   // Constants for constructing the URLs. Translations are taken from the
-  // Aurora channel as those are the most recent ones. The Nightly channel
-  // does not provide all translations.
-  var MOZ_AURORA_ROOT = 'https://hg.mozilla.org/releases/l10n/mozilla-aurora/';
-  var MOZ_AURORA_PDFJS_DIR = '/raw-file/tip/browser/pdfviewer/';
+  // Nightly channel as those are the most recent ones.
+  var MOZ_CENTRAL_ROOT = 'https://hg.mozilla.org/l10n-central/';
+  var MOZ_CENTRAL_PDFJS_DIR = '/raw-file/default/browser/pdfviewer/';
 
   // Defines which files to download for each language.
   var files = ['chrome.properties', 'viewer.properties'];
@@ -48,21 +47,30 @@ function downloadLanguageFiles(root, langCode, callback) {
   // Download the necessary files for this language.
   files.forEach(function(fileName) {
     var outputPath = path.join(outputDir, fileName);
-    var url = MOZ_AURORA_ROOT + langCode + MOZ_AURORA_PDFJS_DIR + fileName;
+    var url = MOZ_CENTRAL_ROOT + langCode + MOZ_CENTRAL_PDFJS_DIR + fileName;
 
     https.get(url, function(response) {
-      var content = '';
-      response.setEncoding('utf8');
-      response.on('data', function(chunk) {
-        content += chunk;
-      });
-      response.on('end', function() {
-        fs.writeFileSync(outputPath, normalizeText(content), 'utf8');
+      // Not all files exist for each language. Files without translations have
+      // been removed (https://bugzilla.mozilla.org/show_bug.cgi?id=1443175).
+      if (response.statusCode === 200) {
+        var content = '';
+        response.setEncoding('utf8');
+        response.on('data', function(chunk) {
+          content += chunk;
+        });
+        response.on('end', function() {
+          fs.writeFileSync(outputPath, normalizeText(content), 'utf8');
+          downloadsLeft--;
+          if (downloadsLeft === 0) {
+            callback();
+          }
+        });
+      } else {
         downloadsLeft--;
         if (downloadsLeft === 0) {
           callback();
         }
-      });
+      }
     });
   });
 }

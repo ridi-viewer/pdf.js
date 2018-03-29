@@ -14,22 +14,34 @@
  */
 /* eslint-disable no-multi-str */
 
-'use strict';
+import { shadow } from '../shared/util';
 
-(function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define('pdfjs/display/webgl', ['exports', 'pdfjs/shared/util',
-      'pdfjs/display/dom_utils'], factory);
-  } else if (typeof exports !== 'undefined') {
-    factory(exports, require('../shared/util.js'), require('./dom_utils.js'));
-  } else {
-    factory((root.pdfjsDisplayWebGL = {}), root.pdfjsSharedUtil,
-      root.pdfjsDisplayDOMUtils);
+class WebGLContext {
+  constructor({ enable = false, }) {
+    this._enabled = enable === true;
   }
-}(this, function (exports, sharedUtil, displayDOMUtils) {
 
-var shadow = sharedUtil.shadow;
-var getDefaultSetting = displayDOMUtils.getDefaultSetting;
+  get isEnabled() {
+    let enabled = this._enabled;
+    if (enabled) {
+      enabled = WebGLUtils.tryInitGL();
+    }
+    return shadow(this, 'isEnabled', enabled);
+  }
+
+  composeSMask({ layer, mask, properties, }) {
+    return WebGLUtils.composeSMask(layer, mask, properties);
+  }
+
+  drawFigures({ width, height, backgroundColor, figures, context, }) {
+    return WebGLUtils.drawFigures(width, height, backgroundColor, figures,
+                                  context);
+  }
+
+  clear() {
+    WebGLUtils.cleanup();
+  }
+}
 
 var WebGLUtils = (function WebGLUtilsClosure() {
   function loadShader(gl, code, shaderType) {
@@ -87,7 +99,7 @@ var WebGLUtils = (function WebGLUtilsClosure() {
     // The temporary canvas is used in the WebGL context.
     currentCanvas = document.createElement('canvas');
     currentGL = currentCanvas.getContext('webgl',
-      { premultipliedalpha: false });
+      { premultipliedalpha: false, });
   }
 
   var smaskVertexShaderCode = '\
@@ -206,7 +218,6 @@ var WebGLUtils = (function WebGLUtilsClosure() {
     // Create a textures
     var texture = createTexture(gl, layer, gl.TEXTURE0);
     var maskTexture = createTexture(gl, mask, gl.TEXTURE1);
-
 
     // Create a buffer and put a single clipspace rectangle in
     // it (2 triangles)
@@ -419,36 +430,34 @@ var WebGLUtils = (function WebGLUtilsClosure() {
     return canvas;
   }
 
-  function cleanup() {
-    if (smaskCache && smaskCache.canvas) {
-      smaskCache.canvas.width = 0;
-      smaskCache.canvas.height = 0;
-    }
-    if (figuresCache && figuresCache.canvas) {
-      figuresCache.canvas.width = 0;
-      figuresCache.canvas.height = 0;
-    }
-    smaskCache = null;
-    figuresCache = null;
-  }
-
   return {
-    get isEnabled() {
-      if (getDefaultSetting('disableWebGL')) {
-        return false;
-      }
-      var enabled = false;
+    tryInitGL() {
       try {
         generateGL();
-        enabled = !!currentGL;
-      } catch (e) { }
-      return shadow(this, 'isEnabled', enabled);
+        return !!currentGL;
+      } catch (ex) { }
+      return false;
     },
-    composeSMask: composeSMask,
-    drawFigures: drawFigures,
-    clear: cleanup
+
+    composeSMask,
+
+    drawFigures,
+
+    cleanup() {
+      if (smaskCache && smaskCache.canvas) {
+        smaskCache.canvas.width = 0;
+        smaskCache.canvas.height = 0;
+      }
+      if (figuresCache && figuresCache.canvas) {
+        figuresCache.canvas.width = 0;
+        figuresCache.canvas.height = 0;
+      }
+      smaskCache = null;
+      figuresCache = null;
+    },
   };
 })();
 
-exports.WebGLUtils = WebGLUtils;
-}));
+export {
+  WebGLContext,
+};
