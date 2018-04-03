@@ -2002,7 +2002,7 @@ var WorkerTransport = (function WorkerTransportClosure() {
 
       messageHandler.on('JpxDecode', function(data) {
         if (this.destroyed) {
-          return Promise.reject('Worker was terminated');
+          return Promise.reject(new Error('Worker was destroyed'));
         }
 
         var imageId = data[0];
@@ -2054,7 +2054,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 var decodedImageDataStringLength = decodedImageDataString.length;
                 if (decodedImageDataStringLength === 0) {
                   nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
-                  reject('Native JPX (JPEG2000) decoding failed. Falling back to jpx.js..');
+                  reject(new Error(
+                    'Native JPX (JPEG2000) decoding failed. Falling back to jpx.js..'));
                   return;
                 }
 
@@ -2067,8 +2068,8 @@ var WorkerTransport = (function WorkerTransportClosure() {
                 nativeViewer.jpxImageDecoded.disconnect(decodeCallback);
                 resolve({
                   decodedData: decodedImageData,
-                  numComps: numComps,
-                  bitsPerComponent: bitsPerComponent
+                  numComps,
+                  bitsPerComponent,
                 });
               };
 

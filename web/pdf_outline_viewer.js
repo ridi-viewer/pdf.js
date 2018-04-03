@@ -26,8 +26,6 @@
   }
 }(this, function (exports, pdfjsLib) {
 
-var PDFJS = pdfjsLib.PDFJS;
-
 var DEFAULT_TITLE = '\u2013';
 
 /**

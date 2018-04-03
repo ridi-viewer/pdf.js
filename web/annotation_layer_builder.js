@@ -79,7 +79,7 @@ var AnnotationLayerBuilder = (function AnnotationLayerBuilderClosure() {
           div: self.div,
           annotations: annotations,
           page: self.pdfPage,
-          imageResourcesPath: PDFJS.imageResourcesPath,
+          imageResourcesPath: pdfjsLib.PDFJS.imageResourcesPath,
           renderInteractiveForms: self.renderInteractiveForms,
           linkService: self.linkService,
           downloadManager: self.downloadManager,

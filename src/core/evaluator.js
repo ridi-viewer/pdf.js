@@ -78,7 +78,6 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     decode(image) {
       // For natively supported formats, send them to the main thread for decoding.
       var dict = image.dict;
-      var numComps;
       var decodePromise;
 
       if (image instanceof JpxStream) {
