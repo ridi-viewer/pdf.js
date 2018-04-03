@@ -1,9 +1,10 @@
-/* globals QWebChannel, qt, PDFViewerApplication, PDFJS */
+/* globals QWebChannel, qt, PDFViewerApplication */
 
 'use strict';
 
 var RidiPdfViewer = function() {
   /* eslint-disable no-new */
+  window.PDFJS = {};
   var self = this;
   new QWebChannel(qt.webChannelTransport, function(channel) {
     self.nativeViewer = channel.objects.nativeViewer;

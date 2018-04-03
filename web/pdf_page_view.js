@@ -341,8 +341,6 @@ var PDFPageView = (function PDFPageViewClosure() {
     },
 
     cssTransform: function PDFPageView_transform(target, redrawAnnotations) {
-      var CustomStyle = pdfjsLib.CustomStyle;
-
       // Scale target (canvas or svg), its wrapper, and page container.
       var width = this.viewport.width;
       var height = this.viewport.height;
@@ -363,7 +361,7 @@ var PDFPageView = (function PDFPageViewClosure() {
       }
       var cssTransform = 'rotate(' + relativeRotation + 'deg) ' +
         'scale(' + scaleX + ',' + scaleY + ')';
-      CustomStyle.setProp('transform', target, cssTransform);
+      target.style.transform = cssTransform;
 
       if (this.textLayer) {
         // Rotating the text layer is more complicated since the divs inside the
@@ -400,11 +398,11 @@ var PDFPageView = (function PDFPageViewClosure() {
             console.error('Bad rotation value.');
             break;
         }
-        CustomStyle.setProp('transform', textLayerDiv,
-            'rotate(' + textAbsRotation + 'deg) ' +
-            'scale(' + scale + ', ' + scale + ') ' +
-            'translate(' + transX + ', ' + transY + ')');
-        CustomStyle.setProp('transformOrigin', textLayerDiv, '0% 0%');
+        textLayerDiv.style.transform =
+          'rotate(' + textAbsRotation + 'deg) ' +
+          'scale(' + scale + ', ' + scale + ') ' +
+          'translate(' + transX + ', ' + transY + ')';
+        textLayerDiv.style.transformOrigin = '0% 0%';
       }
 
       if (redrawAnnotations && this.annotationLayer) {
@@ -492,7 +490,7 @@ var PDFPageView = (function PDFPageViewClosure() {
           self.paintTask = null;
         }
 
-        if (error === 'cancelled') {
+        if (error === 'cancelled' || error instanceof pdfjsLib.RenderingCancelledException) {
           self.error = null;
           return Promise.resolve(undefined);
         }

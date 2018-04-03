@@ -87,7 +87,7 @@ var PDFOutlineViewer = (function PDFOutlineViewerClosure() {
       if (item.url) {
         pdfjsLib.addLinkAttributes(element, {
           url: item.url,
-          target: (item.newWindow ? PDFJS.LinkTarget.BLANK : undefined),
+          target: (item.newWindow ? pdfjsLib.LinkTarget.BLANK : undefined),
         });
         return;
       }

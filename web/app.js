@@ -106,22 +106,6 @@ var RendererType = uiUtilsLib.RendererType;
 var DEFAULT_SCALE_DELTA = 1.0025;
 var DISABLE_AUTO_FETCH_LOADING_BAR_TIMEOUT = 5000;
 
-function configure(PDFJS) {
-  PDFJS.imageResourcesPath = './images/';
-  if (typeof PDFJSDev !== 'undefined' &&
-      PDFJSDev.test('FIREFOX || MOZCENTRAL || GENERIC || CHROME')) {
-    PDFJS.workerSrc = '../build/pdf.worker.js';
-  }
-  if (typeof PDFJSDev === 'undefined' || !PDFJSDev.test('PRODUCTION')) {
-    PDFJS.cMapUrl = '../external/bcmaps/';
-    PDFJS.cMapPacked = true;
-    PDFJS.workerSrc = '../src/worker_loader.js';
-  } else {
-    PDFJS.cMapUrl = '../web/cmaps/';
-    PDFJS.cMapPacked = true;
-  }
-}
-
 var DefaultExernalServices = {
   updateFindControlState: function (data) {},
   initPassiveLoading: function (callbacks) {},
@@ -204,7 +188,7 @@ var PDFViewerApplication = {
     Preferences.initialize();
     this.preferences = Preferences;
 
-    configure(PDFJS);
+    PDFJS.imageResourcesPath = './images/';
     this.appConfig = appConfig;
 
     return this._readPreferences().then(function () {
@@ -221,12 +205,6 @@ var PDFViewerApplication = {
         localized.then(function () {
           self.eventBus.dispatch('localized');
         });
-      }
-
-      if (self.isViewerEmbedded && !PDFJS.isExternalLinkTargetSet()) {
-        // Prevent external links from "replacing" the viewer,
-        // when it's embedded in e.g. an iframe or an object.
-        PDFJS.externalLinkTarget = PDFJS.LinkTarget.TOP;
       }
 
       self.initialized = true;
@@ -288,12 +266,6 @@ var PDFViewerApplication = {
       }),
       Preferences.get('useOnlyCssZoom').then(function resolved(value) {
         PDFJS.useOnlyCssZoom = value;
-      }),
-      Preferences.get('externalLinkTarget').then(function resolved(value) {
-        if (PDFJS.isExternalLinkTargetSet()) {
-          return;
-        }
-        PDFJS.externalLinkTarget = value;
       }),
       Preferences.get('renderer').then(function resolved(value) {
         self.viewerPrefs['renderer'] = value;
@@ -694,7 +666,6 @@ var PDFViewerApplication = {
   open: function pdfViewOpen(file, args) {
     var scale = 0;
     if (arguments.length > 2 || typeof args === 'number') {
-      console.warn('Call of open() with obsolete signature.');
       if (typeof args === 'number') {
         scale = args; // scale argument was found
       }
@@ -751,6 +722,9 @@ var PDFViewerApplication = {
 
     var self = this;
     self.downloadComplete = false;
+
+    parameters.cMapUrl = '../web/cmaps/';
+    parameters.cMapPacked = true;
 
     var loadingTask = pdfjsLib.getDocument(parameters);
     this.pdfLoadingTask = loadingTask;
