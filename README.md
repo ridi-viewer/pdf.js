@@ -8,14 +8,30 @@ rendering PDFs.
 
 ## Git remotes to add
 
-- mozilla-origin : https://github.com/mozilla/pdf.js.git
-- origin : git@github.com:ridi/pdf.js.git 
+- `mozilla-origin` : `https://github.com/mozilla/pdf.js.git`
+- `origin` : `git@github.com:ridi/pdf.js.git`
 
-Please take care of differences between RIDI viewer and the original PDF.js viewer, such as
+## Difference between the RIDI viewer and the original PDF.js viewer
 - Supporting two page display mode.
 - Using larger PDFPageView cache.
 - Using the presentation mode with **VERY** different behaviors.
-- Please refer to the [wiki page](https://ridicorp.atlassian.net/wiki/pages/viewpage.action?pageId=77856777) for details.
+- Enabled native decoding for JPEG2000 images.
+- ... And so on.
+
+Please refer to the [wiki page](https://ridicorp.atlassian.net/wiki/spaces/DevSpace/pages/77856777/PDF.js) for details.
+  - Or just type `git log --author=".*@ridi.com"`.
+
+## Getting new changes on `mozilla-origin/master` to `origin/ridi-master`
+
+Changes can be easily merged into  `origin/ridi-master` with `git merge mozilla-origin/master`.
+
+However because of the difference explained in the above section, changes on the `mozilla-origin/master` must be carefully brought to `origin/ridi-master`.
+
+- Changes to `src/` directory would be necessary to resolve rendering issues in some PDFs.
+  - Some of these changes may affect `web/`. You may look for these major changes by `git log mozilla-origin/master | grep -i "api-major"`.
+- Changes to `web/` directory would be useless unless it's due to major changes in `src/`.
+  - You may ignore all merge conflicts with `(git reset ridi-master -- web) && (git checkout ridi-master -- web)`
+- Other changes are generally meaningless or out of interest.
 
 ## Contributing
 
