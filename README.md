@@ -73,15 +73,15 @@ Next,
   
 > $ npm update
 
-> $ ./get_viewer.sh
+> $ ./get_viewer.sh -v
 
 The command above will generate the generic viewer without building the entire library.
-Note that files for the RIDI viewer should be located at the ridi_modules directory. 
+Note that files for the RIDI viewer should be located at the `ridi_modules` directory. 
 
 In order to bundle all `src/` files into two production scripts and build the generic
 viewer, run:
 
-> $ ./get_viewer.sh -f
+> $ ./get_viewer.sh
 
 This will generate `pdf.js` and `pdf.worker.js` in the `build/generic/build/` directory.
 Both scripts are needed but only `pdf.js` needs to be included since `pdf.worker.js` will
