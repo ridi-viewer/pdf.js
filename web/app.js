@@ -16,6 +16,8 @@
 
 'use strict';
 
+import { DevicePixelRatioChangeDetector } from '../ridi_modules/dpr_change_detector';
+
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     define('pdfjs-web/app', ['exports', 'pdfjs-web/ui_utils',
@@ -206,6 +208,16 @@ var PDFViewerApplication = {
           self.eventBus.dispatch('localized');
         });
       }
+
+      self.devicePixelRatioChangeDetector = new DevicePixelRatioChangeDetector();
+      self.devicePixelRatioChangeDetector.activate(window);
+      self.devicePixelRatioChangeDetector.addListener(() => {
+        let originalScale = self.pdfViewer.currentScale;
+        self.pdfViewer.currentScale = originalScale + 0.015;
+        setTimeout(() => {
+          self.pdfViewer.currentScale = originalScale;
+        }, 50);
+      });
 
       self.initialized = true;
     });
