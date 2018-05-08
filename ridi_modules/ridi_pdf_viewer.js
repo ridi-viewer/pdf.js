@@ -102,5 +102,3 @@ RidiPdfViewer.prototype.setTocFromPdfOutline = function(outline) {
     self.nativeViewer.jsTocArrayAvailable(JSON.stringify(tocArray));
   });
 };
-
-window.RidiPdfViewer = new RidiPdfViewer();

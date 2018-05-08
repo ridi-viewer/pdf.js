@@ -220,6 +220,8 @@ var PDFViewerApplication = {
       });
 
       self.initialized = true;
+
+      window.RidiPdfViewer = new RidiPdfViewer();
     });
   },
 
@@ -1921,7 +1923,9 @@ function webViewerFindFromUrlHash(e) {
 }
 
 function webViewerHandToolChanged(e) {
-  RidiPdfViewer.nativeViewer.jsHandToolChanged(e.isActive);
+  if (RidiPdfViewer.nativeViewer) {
+    RidiPdfViewer.nativeViewer.jsHandToolChanged(e.isActive);
+  }
 }
 
 function adjustPositionInsidePage(pageNumber, requestedDeltaX, requestedDeltaY) {
