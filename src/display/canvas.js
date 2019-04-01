@@ -1973,7 +1973,7 @@ var CanvasGraphics = (function CanvasGraphicsClosure() {
           heightScale /= paintHeight / newHeight;
         }
         tmpCanvas = this.cachedCanvases.getCanvas(tmpCanvasId,
-                                                  newWidth, newHeight);
+                                                  Math.max(1, newWidth), Math.max(1, newHeight));
         tmpCtx = tmpCanvas.context;
         tmpCtx.clearRect(0, 0, newWidth, newHeight);
         tmpCtx.drawImage(imgToPaint, 0, 0, paintWidth, paintHeight,
