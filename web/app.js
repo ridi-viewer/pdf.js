@@ -16,7 +16,7 @@
 
 'use strict';
 
-import { DevicePixelRatioChangeDetector } from '../ridi_modules/dpr_change_detector';
+import { DevicePixelRatioChangeDetector } from '../ridi_modules/dpr_change_detector.es6';
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
