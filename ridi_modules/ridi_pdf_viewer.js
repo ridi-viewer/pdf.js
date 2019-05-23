@@ -99,6 +99,6 @@ RidiPdfViewer.prototype.setTocFromPdfOutline = function(outline) {
       }
       tocLevel--;
     });
-    self.nativeViewer.jsTocArrayAvailable(JSON.stringify(tocArray));
+    self.nativeViewer.jsTocArrayAvailable(tocArray);
   });
 };
