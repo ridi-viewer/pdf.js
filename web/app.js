@@ -1012,8 +1012,6 @@ var PDFViewerApplication = {
         }
 
         RidiPdfViewer.nativeViewer.log('A PDF document is loaded!');
-        // PDF files are not separate by spine or picture, so book dataIndex is fixed to 0.
-        RidiPdfViewer.nativeViewer.jsBookDataLoaded(0);
         RidiPdfViewer.nativeViewer.jsBookDataPagesCountCalculated(0, self.pagesCount);
       }, function rejected(reason) {
         console.error(reason);
